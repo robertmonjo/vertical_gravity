@@ -329,12 +329,12 @@ def plot_fig2(
             (independent_handles if legend_group == "independent" else dependent_handles).append(h)
 
     ax_top.set_xscale("log")
-    ax_top.set_xlim(1.0, 400.0)
+    ax_top.set_xlim(2.0, 400.0)
     ax_top.set_ylim(0.0, 300.0)
     ax_top.set_xlabel(r"$R$ [kpc]")
     ax_top.set_ylabel(r"$v_c$ [km s$^{-1}$]")
-    ax_top.set_xticks([1, 2, 5, 10, 20, 50, 100, 200, 400])
-    ax_top.set_xticklabels(["1", "2", "5", "10", "20", "50", "100", "200", "400"])
+    ax_top.set_xticks([2, 5, 10, 20, 50, 100, 200, 400])
+    ax_top.set_xticklabels(["2", "5", "10", "20", "50", "100", "200", "400"])
     ax_top.grid(True, which="major", color="0.88", lw=0.8)
 
     _leg_kw = dict(frameon=False, fontsize=9.0, title_fontsize=10.8,
@@ -364,57 +364,6 @@ def plot_fig2(
                    title="Gravity models", fontsize=9.0, title_fontsize=10.8,
                    handlelength=2.0, handletextpad=0.3, labelspacing=0.08,
                    columnspacing=0.5)
-
-    # Zoom inset in lower-left (xlim=3–30, ylim=150–260)
-    axins = ax_top.inset_axes([0.015, 0.04, 0.40, 0.54])
-    sm_i = lambda v: gaussian_filter1d(v, sigma=3)
-    if bband_R is not None:
-        _mz = (bband_R >= 2.0) & (bband_R <= 35.0)
-        axins.fill_between(bband_R[_mz], sm_i(bband_p5[_mz]), sm_i(bband_p95[_mz]),
-                           color=_BARY_COLOR, alpha=0.075, lw=0)
-        axins.fill_between(bband_R[_mz], sm_i(bband_p16[_mz]), sm_i(bband_p84[_mz]),
-                           color=_BARY_COLOR, alpha=0.18, lw=0)
-        for _fam, _fcol in _FAMILY_COLORS.items():
-            if _fam in bband_families:
-                axins.plot(bband_R[_mz], bband_families[_fam][_mz],
-                           color=_fcol, lw=1.1, linestyle=":", alpha=0.65)
-    for _k, (_rc, _mc, _p16, _p84, _col, _ls, _lw) in _model_curves.items():
-        axins.fill_between(_rc, _p16, _p84, color=_col, alpha=0.08, lw=0)
-        axins.plot(_rc, _mc, color=_col, ls=_ls, lw=_lw * 0.85, alpha=0.82, zorder=3)
-    if wang_rr is not None:
-        axins.fill_between(
-            wang_rr[wang_order],
-            wang_vv[wang_order] - wang_ss_obs[wang_order],
-            wang_vv[wang_order] + wang_ss_obs[wang_order],
-            color="#ff9999", alpha=0.32, lw=0)
-        axins.errorbar(wang_rr, wang_vv, yerr=wang_ss_total,
-                       fmt="o", ms=3.5, color="black", ecolor="black", lw=0.7, zorder=8)
-    if rot_obs:
-        for _key, _mkr, _col, _lbl, _lg, _fill in _group_style:
-            _sub = [r for r in rot_obs
-                    if _key in str(r.get("dataset", "")) and r.get("vc_kms") is not None
-                    and 2.5 <= (r.get("R_kpc") or 0) <= 32]
-            if _key == "Wang2020_":
-                _sub = [r for r in _sub if "Deason2012" not in str(r.get("dataset", ""))]
-            if not _sub:
-                continue
-            _rr = np.array([r["R_kpc"] for r in _sub])
-            _vv = np.array([r["vc_kms"] for r in _sub])
-            _ss = np.array([r.get("sigma_vc_kms") or 0.0 for r in _sub])
-            axins.errorbar(_rr, _vv, yerr=_ss if np.any(_ss > 0) else None,
-                           fmt=_mkr, ms=3.5 if _mkr != "*" else 6.0,
-                           mfc=_col if _fill else "white", mec=_col, ecolor=_col,
-                           alpha=0.72, lw=0.6, zorder=8)
-    axins.set_xscale("log")
-    axins.set_xlim(3, 30)
-    axins.set_ylim(150, 260)
-    import matplotlib.ticker as _mticker
-    axins.xaxis.set_major_locator(_mticker.FixedLocator([3, 5, 10, 20, 30]))
-    axins.xaxis.set_major_formatter(_mticker.FixedFormatter(["3", "5", "10", "20", "30"]))
-    axins.xaxis.set_minor_locator(_mticker.NullLocator())
-    axins.tick_params(labelsize=7.5, direction="in", top=True, right=True)
-    axins.grid(True, which="major", color="0.88", lw=0.6)
-    ax_top.indicate_inset_zoom(axins, edgecolor="0.45", lw=0.9, alpha=0.8)
 
     fig.add_subplot(gs[1]).axis("off")
 
@@ -468,8 +417,10 @@ def plot_fig2(
                 axp.fill_between(zd, b16d, b84d, color=_BARY_COLOR, alpha=0.18, lw=0)
                 axp.plot(zd, b50d, color=_BARY_COLOR, lw=2.8, alpha=0.35)
 
-        # Model curves
+        # Model curves (skip baryonic — already shown as band; skip qumond_mls — not in figure)
         for key, dat in available.items():
+            if key in ("baryonic", "qumond_mls"):
+                continue
             label, color, ls, lw = _MODEL_STYLES[key]
             mask_m = np.abs(dat["v_coords"][:, 0] - R) < 0.05
             if not mask_m.any():

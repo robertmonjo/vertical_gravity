@@ -63,7 +63,7 @@ MODEL_SPECS = [
     ("hmg_k1",            "HMG anisotropic (k=1)",                     1, "npz"),
     ("fr_screened",       "f(R) screened",                             2, "npz"),
     ("refracted_gravity", "Refracted Gravity",                         2, "npz"),
-    ("emergent_gravity",  "Emergent Gravity (fixed)",                   0, "npz"),
+    ("emergent_gravity",  "VEG (free a_EG)",                             1, "precomputed"),
 ]
 N_DRAWS = 100
 
