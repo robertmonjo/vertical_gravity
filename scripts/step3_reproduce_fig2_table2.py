@@ -94,18 +94,21 @@ def _build_chi2_summary(outputs_dir: Path) -> list[dict]:
         n = min(len(chi2_r), len(chi2_z))
         for i in range(n):
             chi2_tot = chi2_r[i] + chi2_z[i]
+            dof = N_PRIMARY - k
             rows_out.append({
-                "draw_id":       i + 1,
-                "draw_label":    f"b{i+1}",
-                "model_key":     key,
-                "model_name":    name,
-                "k":             k,
-                "source":        source,
-                "dof":           N_PRIMARY - k,
-                "chi2_radial":   f"{chi2_r[i]:.4f}",
-                "chi2_vertical": f"{chi2_z[i]:.4f}",
-                "chi2_total":    f"{chi2_tot:.4f}",
-                "chi2_nu":       f"{chi2_tot / (N_PRIMARY - k):.4f}",
+                "draw_id":        i + 1,
+                "draw_label":     f"b{i+1}",
+                "model_key":      key,
+                "model_name":     name,
+                "k":              k,
+                "source":         source,
+                "dof":            dof,
+                "chi2_radial":    f"{chi2_r[i]:.4f}",
+                "chi2_vertical":  f"{chi2_z[i]:.4f}",
+                "chi2_total":     f"{chi2_tot:.4f}",
+                "chi2_nu":        f"{chi2_tot / dof:.4f}",
+                "chi2_nu_rad":    f"{chi2_r[i] / dof:.4f}",
+                "chi2_nu_vert":   f"{chi2_z[i] / dof:.4f}",
             })
     return rows_out
 

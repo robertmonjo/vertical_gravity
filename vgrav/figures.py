@@ -34,13 +34,13 @@ _MODEL_STYLES: dict[str, tuple] = {
     "baryonic":           ("Baryonic (Newtonian)",    "#6baed6", "--", 1.5),
     "qumond_standard":    ("QUMOND standard",          "#28cae0", "-",  1.000),
     "qumond_simple":      ("QUMOND simple",            "#285ee0", "-",  1.288),
-    "emergent_gravity":   ("Emergent Gravity (free)",  "#5d28e0", "-",  1.575),
-    "refracted_gravity":  ("Refracted Gravity",        "#c928e0", "-",  1.862),
-    "fr_screened":        ("f(R) screened",            "#e0288b", "-",  2.150),
-    "stvg":               ("STVG",                    "#e03028", "-",  2.438),
-    "cdm_nfw":            ("CDM NFW",                  "#e09c28", "-",  2.725),
-    "cdm_einasto":        ("CDM Einasto",              "#b8e028", "-",  3.012),
-    "hmg_k1":             ("HMG anisotropic",          "#4de028", "-",  3.300),
+    "emergent_gravity":   (r"VEG (free $a_{\rm EG}$)",  "#5d28e0", "-",  1.575),
+    "refracted_gravity":  ("ReG",                       "#c928e0", "-",  1.862),
+    "fr_screened":        ("f(R) screened",             "#e0288b", "-",  2.150),
+    "stvg":               ("STVG",                      "#e03028", "-",  2.438),
+    "cdm_nfw":            ("CDM NFW",                   "#e09c28", "-",  2.725),
+    "cdm_einasto":        ("CDM Einasto",               "#b8e028", "-",  3.012),
+    "hmg_k1":             ("HMG (This Work)",           "#4de028", "-",  3.300),
     "qumond_mls":         ("QUMOND MLS/RAR",           "#888888", "--", 1.5),
 }
 _BARY_COLOR = "#6baed6"
@@ -241,57 +241,75 @@ def plot_fig2(
                 ax_top.plot(bband_R, bband_families[_fam],
                             color=_fcol, lw=1.4, linestyle=":", alpha=0.65, zorder=0.08)
 
+    # Load chi²_ν medians from mc100_chi2_all_models.csv if available
+    _chi2_med: dict[str, float] = {}
+    _chi2_csv = outputs_dir / "mc100_chi2_all_models.csv"
+    if _chi2_csv.exists():
+        _chi2_by_key: dict[str, list] = {}
+        with open(_chi2_csv, newline="", encoding="utf-8") as _fh:
+            for _row in csv.DictReader(_fh):
+                _chi2_by_key.setdefault(_row["model_key"], []).append(float(_row["chi2_nu"]))
+        _chi2_med = {k: float(np.median(v)) for k, v in _chi2_by_key.items()}
+
     model_handles = []
+    _model_curves: dict = {}
     for key, dat in available.items():
-        label, color, ls, lw = _MODEL_STYLES[key]
+        if key == "qumond_mls":
+            continue
+        label_base, color, ls, lw = _MODEL_STYLES[key]
         med = gaussian_filter1d(_pct(dat["r_draws"], 50), sigma=4)
-        ax_top.fill_between(
-            dat["r_coords"],
-            gaussian_filter1d(_pct(dat["r_draws"], 16), sigma=4),
-            gaussian_filter1d(_pct(dat["r_draws"], 84), sigma=4),
-            color=color, alpha=0.08, lw=0,
-        )
+        p16 = gaussian_filter1d(_pct(dat["r_draws"], 16), sigma=4)
+        p84 = gaussian_filter1d(_pct(dat["r_draws"], 84), sigma=4)
+        ax_top.fill_between(dat["r_coords"], p16, p84, color=color, alpha=0.08, lw=0)
+        chi2_sfx = (f" ($\\chi^2_{{\\nu}}={_chi2_med[key]:.2f}$)"
+                    if key in _chi2_med and key != "baryonic" else "")
         h, = ax_top.plot(dat["r_coords"], med, color=color, ls=ls, lw=lw,
-                         label=label, zorder=3)
+                         label=label_base + chi2_sfx, zorder=3, alpha=0.82)
         if key != "baryonic":
             model_handles.append(h)
+            _model_curves[key] = (dat["r_coords"], med, p16, p84, color, ls, lw)
 
+    # Observational data — per-survey styled (canonical group_style)
+    _group_style = [
+        ("Feng2026",                     "h", "#f781bf", "Feng et al. 2026 Cepheids",      "independent", False),
+        ("McClureDickey2016",            "o", "#009e73", "McClure-Dickey 2016 Q1 H I",     "independent", False),
+        ("McClureDickey2007",            "o", "#b54f12", "McClure-Dickey 2007 Q4 H I",     "independent", False),
+        ("Eilers2019_McGaugh2019",       "s", "#1b9e9a", "Eilers/McGaugh 2019 Gaia",       "independent", False),
+        ("Watkins2019",                  "v", "#888888", "Watkins 2019 TME",                "dependent",   True),
+        ("Deason2021",                   "*", "#888888", "Deason 2021 DF",                  "dependent",   True),
+        ("Wang2020_Deason2012",          "^", "#888888", "Deason 2012 DF",                  "dependent",   True),
+        ("Wang2020_",                    "x", "#888888", "Wang 2020 compilation",           "dependent",   False),
+        ("Bird2022_digitized_KG_Jeans",  "o", "#888888", "Bird 2022 KG Jeans",             "dependent",   False),
+        ("Bird2022_digitized_KG_TME",    "o", "#888888", "Bird 2022 KG TME",               "dependent",   True),
+        ("Bird2022_digitized_BHB_Jeans", "s", "#888888", "Bird 2022 BHB Jeans",            "dependent",   False),
+        ("Bird2022_digitized_BHB_TME",   "s", "#888888", "Bird 2022 BHB TME",              "dependent",   True),
+    ]
     independent_handles: list = []
     dependent_handles: list = []
+    wang_rr = wang_vv = wang_ss_obs = wang_ss_total = wang_order = None
     if rot_obs:
-        # Wang+2026 primary RC (model-independent, enters chi2)
         wang_rows = [r for r in rot_obs
                      if str(r.get("dataset", "")).startswith("Wang2026_rotation_curve")
                      and r.get("vc_kms") is not None]
         if wang_rows:
-            rr = np.array([r["R_kpc"] for r in wang_rows])
-            vv = np.array([r["vc_kms"] for r in wang_rows])
-            ss = np.array([r.get("sigma_vc_kms") or 0.0 for r in wang_rows])
-            order = np.argsort(rr)
+            wang_rr = np.array([r["R_kpc"] for r in wang_rows])
+            wang_vv = np.array([r["vc_kms"] for r in wang_rows])
+            wang_ss_total = np.array([r.get("sigma_vc_kms") or 0.0 for r in wang_rows])
+            wang_ss_obs = np.array([r.get("sigma_obs_kms") or r.get("sigma_vc_kms") or 0.0
+                                     for r in wang_rows])
+            wang_order = np.argsort(wang_rr)
             band = ax_top.fill_between(
-                rr[order], vv[order] - ss[order], vv[order] + ss[order],
+                wang_rr[wang_order],
+                wang_vv[wang_order] - wang_ss_obs[wang_order],
+                wang_vv[wang_order] + wang_ss_obs[wang_order],
                 color="#ff9999", alpha=0.32, lw=0, label="Wang et al. 2026 (obs. err.)",
             )
             independent_handles.append(band)
-            h = ax_top.errorbar(rr, vv, yerr=ss, fmt="o", ms=3.3,
-                                color="#1a3a9c", ecolor="#1a3a9c",
+            h = ax_top.errorbar(wang_rr, wang_vv, yerr=wang_ss_total, fmt="o", ms=5.0,
+                                color="black", ecolor="black",
                                 lw=0.8, label="Wang et al. 2026 RC", zorder=8)
             independent_handles.append(h)
 
-        _group_style = [
-            ("Feng2026",                     "h", "#f781bf", "Feng et al. 2026 Cepheids",      "independent", False),
-            ("McClureDickey2016",            "o", "#009e73", "McClure-Dickey 2016 Q1 H I",     "independent", False),
-            ("McClureDickey2007",            "o", "#b54f12", "McClure-Dickey 2007 Q4 H I",     "independent", False),
-            ("Eilers2019_McGaugh2019",       "s", "#1b9e9a", "Eilers/McGaugh 2019 Gaia",       "independent", False),
-            ("Watkins2019",                  "v", "#888888", "Watkins 2019 TME",                "dependent",   True),
-            ("Deason2021",                   "*", "#888888", "Deason 2021 DF",                  "dependent",   True),
-            ("Wang2020_Deason2012",          "^", "#888888", "Deason 2012 DF",                  "dependent",   True),
-            ("Wang2020_",                    "x", "#888888", "Wang 2020 compilation",           "dependent",   False),
-            ("Bird2022_digitized_KG_Jeans",  "o", "#888888", "Bird 2022 KG Jeans",             "dependent",   False),
-            ("Bird2022_digitized_KG_TME",    "o", "#888888", "Bird 2022 KG TME",               "dependent",   True),
-            ("Bird2022_digitized_BHB_Jeans", "s", "#888888", "Bird 2022 BHB Jeans",            "dependent",   False),
-            ("Bird2022_digitized_BHB_TME",   "s", "#888888", "Bird 2022 BHB TME",              "dependent",   True),
-        ]
         for key, marker, color, label, legend_group, filled in _group_style:
             sub = [r for r in rot_obs
                    if key in str(r.get("dataset", "")) and r.get("vc_kms") is not None]
@@ -304,7 +322,7 @@ def plot_fig2(
             ss = np.array([r.get("sigma_vc_kms") or 0.0 for r in sub])
             h = ax_top.errorbar(
                 rr, vv, yerr=ss if np.any(ss > 0) else None,
-                fmt=marker, ms=4.0 if marker != "*" else 7.0,
+                fmt=marker, ms=5.5 if marker != "*" else 9.0,
                 mfc=color if filled else "white", mec=color, ecolor=color,
                 alpha=0.72, lw=0.7, label=label, zorder=8,
             )
@@ -319,16 +337,16 @@ def plot_fig2(
     ax_top.set_xticklabels(["1", "2", "5", "10", "20", "50", "100", "200", "400"])
     ax_top.grid(True, which="major", color="0.88", lw=0.8)
 
-    _leg_kw = dict(frameon=False, fontsize=9.4, title_fontsize=11.2,
-                   handlelength=1.35, handletextpad=0.35, columnspacing=0.72, labelspacing=0.10)
+    _leg_kw = dict(frameon=False, fontsize=9.0, title_fontsize=10.8,
+                   handlelength=1.2, handletextpad=0.3, columnspacing=0.6, labelspacing=0.08)
     if independent_handles:
         fig.legend(handles=independent_handles, loc="upper left",
                    bbox_to_anchor=(0.015, 0.995), ncol=1,
-                   title="Model-independent observations", **_leg_kw)
+                   title="Model-independent obs.", **_leg_kw)
     if dependent_handles:
         fig.legend(handles=dependent_handles, loc="upper left",
-                   bbox_to_anchor=(0.285, 0.995), ncol=1,
-                   title="Model-dependent observations", **_leg_kw)
+                   bbox_to_anchor=(0.205, 0.995), ncol=1,
+                   title="Model-dependent obs.", **_leg_kw)
     _bary_handles = [
         Patch(facecolor="#6baed6", alpha=0.18, label=r"MC $p_{16}$–$p_{84}$"),
         Patch(facecolor="#6baed6", alpha=0.075, label=r"MC $p_5$–$p_{95}$"),
@@ -338,13 +356,65 @@ def plot_fig2(
         for _fam, _fc in _FAMILY_COLORS.items()
     ]
     fig.legend(handles=_bary_handles, loc="upper left",
-               bbox_to_anchor=(0.545, 0.995), ncol=1,
-               title=r"Baryonic estimates ($v_N$)", **_leg_kw)
+               bbox_to_anchor=(0.405, 0.995), ncol=1,
+               title=r"Baryonic ($v_N$)", **_leg_kw)
     if model_handles:
-        fig.legend(handles=model_handles, loc="lower left",
-                   bbox_to_anchor=(0.073, 0.462), ncol=1, frameon=False,
-                   title="Gravity models", fontsize=9.4, title_fontsize=11.4,
-                   handlelength=2.35, handletextpad=0.38, labelspacing=0.08)
+        fig.legend(handles=model_handles, loc="upper right",
+                   bbox_to_anchor=(0.985, 0.995), ncol=2, frameon=False,
+                   title="Gravity models", fontsize=9.0, title_fontsize=10.8,
+                   handlelength=2.0, handletextpad=0.3, labelspacing=0.08,
+                   columnspacing=0.5)
+
+    # Zoom inset in lower-left (xlim=3–30, ylim=150–260)
+    axins = ax_top.inset_axes([0.015, 0.04, 0.40, 0.54])
+    sm_i = lambda v: gaussian_filter1d(v, sigma=3)
+    if bband_R is not None:
+        _mz = (bband_R >= 2.0) & (bband_R <= 35.0)
+        axins.fill_between(bband_R[_mz], sm_i(bband_p5[_mz]), sm_i(bband_p95[_mz]),
+                           color=_BARY_COLOR, alpha=0.075, lw=0)
+        axins.fill_between(bband_R[_mz], sm_i(bband_p16[_mz]), sm_i(bband_p84[_mz]),
+                           color=_BARY_COLOR, alpha=0.18, lw=0)
+        for _fam, _fcol in _FAMILY_COLORS.items():
+            if _fam in bband_families:
+                axins.plot(bband_R[_mz], bband_families[_fam][_mz],
+                           color=_fcol, lw=1.1, linestyle=":", alpha=0.65)
+    for _k, (_rc, _mc, _p16, _p84, _col, _ls, _lw) in _model_curves.items():
+        axins.fill_between(_rc, _p16, _p84, color=_col, alpha=0.08, lw=0)
+        axins.plot(_rc, _mc, color=_col, ls=_ls, lw=_lw * 0.85, alpha=0.82, zorder=3)
+    if wang_rr is not None:
+        axins.fill_between(
+            wang_rr[wang_order],
+            wang_vv[wang_order] - wang_ss_obs[wang_order],
+            wang_vv[wang_order] + wang_ss_obs[wang_order],
+            color="#ff9999", alpha=0.32, lw=0)
+        axins.errorbar(wang_rr, wang_vv, yerr=wang_ss_total,
+                       fmt="o", ms=3.5, color="black", ecolor="black", lw=0.7, zorder=8)
+    if rot_obs:
+        for _key, _mkr, _col, _lbl, _lg, _fill in _group_style:
+            _sub = [r for r in rot_obs
+                    if _key in str(r.get("dataset", "")) and r.get("vc_kms") is not None
+                    and 2.5 <= (r.get("R_kpc") or 0) <= 32]
+            if _key == "Wang2020_":
+                _sub = [r for r in _sub if "Deason2012" not in str(r.get("dataset", ""))]
+            if not _sub:
+                continue
+            _rr = np.array([r["R_kpc"] for r in _sub])
+            _vv = np.array([r["vc_kms"] for r in _sub])
+            _ss = np.array([r.get("sigma_vc_kms") or 0.0 for r in _sub])
+            axins.errorbar(_rr, _vv, yerr=_ss if np.any(_ss > 0) else None,
+                           fmt=_mkr, ms=3.5 if _mkr != "*" else 6.0,
+                           mfc=_col if _fill else "white", mec=_col, ecolor=_col,
+                           alpha=0.72, lw=0.6, zorder=8)
+    axins.set_xscale("log")
+    axins.set_xlim(3, 30)
+    axins.set_ylim(150, 260)
+    import matplotlib.ticker as _mticker
+    axins.xaxis.set_major_locator(_mticker.FixedLocator([3, 5, 10, 20, 30]))
+    axins.xaxis.set_major_formatter(_mticker.FixedFormatter(["3", "5", "10", "20", "30"]))
+    axins.xaxis.set_minor_locator(_mticker.NullLocator())
+    axins.tick_params(labelsize=7.5, direction="in", top=True, right=True)
+    axins.grid(True, which="major", color="0.88", lw=0.6)
+    ax_top.indicate_inset_zoom(axins, edgecolor="0.45", lw=0.9, alpha=0.8)
 
     fig.add_subplot(gs[1]).axis("off")
 
