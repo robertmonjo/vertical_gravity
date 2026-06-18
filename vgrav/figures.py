@@ -23,33 +23,42 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LogNorm
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 from scipy.interpolate import PchipInterpolator
 from scipy.ndimage import gaussian_filter1d
 
 # ── Model display config ───────────────────────────────────────────────────────
 # key → (display_name, color, linestyle, linewidth)
 _MODEL_STYLES: dict[str, tuple] = {
-    "baryonic":           ("Baryonic (Newtonian)",   "#6baed6", "--", 1.8),
-    "qumond_simple":      ("QUMOND simple",           "#1a9850", "-",  1.8),
-    "qumond_standard":    ("QUMOND standard",         "#91cf60", "-",  1.8),
-    "qumond_mls":         ("QUMOND MLS/RAR",          "#d9ef8b", "-",  1.8),
-    "stvg":               ("STVG",                    "#9467bd", "-",  1.8),
-    "cdm_nfw":            ("CDM NFW",                 "#ff7f0e", "--", 2.2),
-    "cdm_einasto":        ("CDM Einasto",             "#d62728", "--", 2.2),
-    "hmg_k1":             ("HMG anisotropic",         "#111111", "-",  2.2),
-    "fr_screened":        ("f(R) screened",           "#4393c3", "-",  1.8),
-    "refracted_gravity":  ("Refracted Gravity",       "#74c476", "-",  1.8),
-    "emergent_gravity":   ("Emergent Gravity (fixed)","#fdae61", ":",  1.8),
+    "baryonic":           ("Baryonic (Newtonian)",    "#6baed6", "--", 1.5),
+    "qumond_standard":    ("QUMOND standard",          "#28cae0", "-",  1.000),
+    "qumond_simple":      ("QUMOND simple",            "#285ee0", "-",  1.288),
+    "emergent_gravity":   ("Emergent Gravity (free)",  "#5d28e0", "-",  1.575),
+    "refracted_gravity":  ("Refracted Gravity",        "#c928e0", "-",  1.862),
+    "fr_screened":        ("f(R) screened",            "#e0288b", "-",  2.150),
+    "stvg":               ("STVG",                    "#e03028", "-",  2.438),
+    "cdm_nfw":            ("CDM NFW",                  "#e09c28", "-",  2.725),
+    "cdm_einasto":        ("CDM Einasto",              "#b8e028", "-",  3.012),
+    "hmg_k1":             ("HMG anisotropic",          "#4de028", "-",  3.300),
+    "qumond_mls":         ("QUMOND MLS/RAR",           "#888888", "--", 1.5),
 }
 _BARY_COLOR = "#6baed6"
 
 # Baryonic family colours — matches make_fig2_consolidated.py
 _FAMILY_COLORS: dict[str, str] = {
-    "McGaugh2018_Imig2025": "#2b8cbe",
-    "Wang2026_Lian2022":    "#d95f02",
-    "McMillan2017":         "#31a354",
-    "deSalas2019_B2":       "#756bb1",
-    "Barros2016_MI":        "#c51b7d",
+    "McGaugh2018_Imig2025": "#d62728",
+    "Wang2026_Lian2022":    "#ff7f0e",
+    "McMillan2017":         "#2ca02c",
+    "deSalas2019_B2":       "#1f77b4",
+    "Barros2016_MI":        "#9467bd",
+}
+_FAMILY_LABELS: dict[str, str] = {
+    "McGaugh2018_Imig2025": "McGaugh/Imig",
+    "Wang2026_Lian2022":    "Wang/Lian",
+    "McMillan2017":         "McMillan 2017",
+    "deSalas2019_B2":       "de Salas 2019 B2",
+    "Barros2016_MI":        "Barros 2016 MI",
 }
 
 
@@ -232,6 +241,7 @@ def plot_fig2(
                 ax_top.plot(bband_R, bband_families[_fam],
                             color=_fcol, lw=1.4, linestyle=":", alpha=0.65, zorder=0.08)
 
+    model_handles = []
     for key, dat in available.items():
         label, color, ls, lw = _MODEL_STYLES[key]
         med = gaussian_filter1d(_pct(dat["r_draws"], 50), sigma=4)
@@ -241,37 +251,101 @@ def plot_fig2(
             gaussian_filter1d(_pct(dat["r_draws"], 84), sigma=4),
             color=color, alpha=0.08, lw=0,
         )
-        ax_top.plot(dat["r_coords"], med, color=color, ls=ls, lw=lw,
-                    label=label, zorder=3)
+        h, = ax_top.plot(dat["r_coords"], med, color=color, ls=ls, lw=lw,
+                         label=label, zorder=3)
+        if key != "baryonic":
+            model_handles.append(h)
 
+    independent_handles: list = []
+    dependent_handles: list = []
     if rot_obs:
-        # model-dependent context points (grey, background, not used in chi2)
-        dep = [r for r in rot_obs if r["in_chi2_fit"].strip().lower() != "true"
-               and r.get("vc_kms") is not None and r.get("sigma_vc_kms") is not None]
-        if dep:
-            ax_top.errorbar(
-                [r["R_kpc"] for r in dep], [r["vc_kms"] for r in dep],
-                yerr=[r["sigma_vc_kms"] for r in dep],
-                fmt="o", ms=2.2, color="#aaaaaa", ecolor="#cccccc",
-                lw=0.5, zorder=2, alpha=0.55, label="Other surveys (context)",
+        # Wang+2026 primary RC (model-independent, enters chi2)
+        wang_rows = [r for r in rot_obs
+                     if str(r.get("dataset", "")).startswith("Wang2026_rotation_curve")
+                     and r.get("vc_kms") is not None]
+        if wang_rows:
+            rr = np.array([r["R_kpc"] for r in wang_rows])
+            vv = np.array([r["vc_kms"] for r in wang_rows])
+            ss = np.array([r.get("sigma_vc_kms") or 0.0 for r in wang_rows])
+            order = np.argsort(rr)
+            band = ax_top.fill_between(
+                rr[order], vv[order] - ss[order], vv[order] + ss[order],
+                color="#ff9999", alpha=0.32, lw=0, label="Wang et al. 2026 (obs. err.)",
             )
-        # model-independent fit points (black, foreground, enter chi2)
-        fit = [r for r in rot_obs if r["in_chi2_fit"].strip().lower() == "true"
-               and r.get("vc_kms") is not None and r.get("sigma_vc_kms") is not None]
-        if fit:
-            ax_top.errorbar(
-                [r["R_kpc"] for r in fit], [r["vc_kms"] for r in fit],
-                yerr=[r["sigma_vc_kms"] for r in fit],
-                fmt="o", ms=3.5, color="black", ecolor="black",
-                lw=0.8, zorder=10, label="Observations (fit)",
-            )
+            independent_handles.append(band)
+            h = ax_top.errorbar(rr, vv, yerr=ss, fmt="o", ms=3.3,
+                                color="#1a3a9c", ecolor="#1a3a9c",
+                                lw=0.8, label="Wang et al. 2026 RC", zorder=8)
+            independent_handles.append(h)
 
-    ax_top.set_xscale("symlog", linthresh=2.0)
-    ax_top.set_xlim(0.5, 250.0)
-    ax_top.set_ylim(100, 310)
+        _group_style = [
+            ("Feng2026",                     "h", "#f781bf", "Feng et al. 2026 Cepheids",      "independent", False),
+            ("McClureDickey2016",            "o", "#009e73", "McClure-Dickey 2016 Q1 H I",     "independent", False),
+            ("McClureDickey2007",            "o", "#b54f12", "McClure-Dickey 2007 Q4 H I",     "independent", False),
+            ("Eilers2019_McGaugh2019",       "s", "#1b9e9a", "Eilers/McGaugh 2019 Gaia",       "independent", False),
+            ("Watkins2019",                  "v", "#888888", "Watkins 2019 TME",                "dependent",   True),
+            ("Deason2021",                   "*", "#888888", "Deason 2021 DF",                  "dependent",   True),
+            ("Wang2020_Deason2012",          "^", "#888888", "Deason 2012 DF",                  "dependent",   True),
+            ("Wang2020_",                    "x", "#888888", "Wang 2020 compilation",           "dependent",   False),
+            ("Bird2022_digitized_KG_Jeans",  "o", "#888888", "Bird 2022 KG Jeans",             "dependent",   False),
+            ("Bird2022_digitized_KG_TME",    "o", "#888888", "Bird 2022 KG TME",               "dependent",   True),
+            ("Bird2022_digitized_BHB_Jeans", "s", "#888888", "Bird 2022 BHB Jeans",            "dependent",   False),
+            ("Bird2022_digitized_BHB_TME",   "s", "#888888", "Bird 2022 BHB TME",              "dependent",   True),
+        ]
+        for key, marker, color, label, legend_group, filled in _group_style:
+            sub = [r for r in rot_obs
+                   if key in str(r.get("dataset", "")) and r.get("vc_kms") is not None]
+            if key == "Wang2020_":
+                sub = [r for r in sub if "Deason2012" not in str(r.get("dataset", ""))]
+            if not sub:
+                continue
+            rr = np.array([r["R_kpc"] for r in sub])
+            vv = np.array([r["vc_kms"] for r in sub])
+            ss = np.array([r.get("sigma_vc_kms") or 0.0 for r in sub])
+            h = ax_top.errorbar(
+                rr, vv, yerr=ss if np.any(ss > 0) else None,
+                fmt=marker, ms=4.0 if marker != "*" else 7.0,
+                mfc=color if filled else "white", mec=color, ecolor=color,
+                alpha=0.72, lw=0.7, label=label, zorder=8,
+            )
+            (independent_handles if legend_group == "independent" else dependent_handles).append(h)
+
+    ax_top.set_xscale("log")
+    ax_top.set_xlim(1.0, 400.0)
+    ax_top.set_ylim(0.0, 300.0)
     ax_top.set_xlabel(r"$R$ [kpc]")
     ax_top.set_ylabel(r"$v_c$ [km s$^{-1}$]")
-    ax_top.legend(loc="upper right", ncol=2, fontsize=7.5, frameon=True)
+    ax_top.set_xticks([1, 2, 5, 10, 20, 50, 100, 200, 400])
+    ax_top.set_xticklabels(["1", "2", "5", "10", "20", "50", "100", "200", "400"])
+    ax_top.grid(True, which="major", color="0.88", lw=0.8)
+
+    _leg_kw = dict(frameon=False, fontsize=9.4, title_fontsize=11.2,
+                   handlelength=1.35, handletextpad=0.35, columnspacing=0.72, labelspacing=0.10)
+    if independent_handles:
+        fig.legend(handles=independent_handles, loc="upper left",
+                   bbox_to_anchor=(0.015, 0.995), ncol=1,
+                   title="Model-independent observations", **_leg_kw)
+    if dependent_handles:
+        fig.legend(handles=dependent_handles, loc="upper left",
+                   bbox_to_anchor=(0.285, 0.995), ncol=1,
+                   title="Model-dependent observations", **_leg_kw)
+    _bary_handles = [
+        Patch(facecolor="#6baed6", alpha=0.18, label=r"MC $p_{16}$–$p_{84}$"),
+        Patch(facecolor="#6baed6", alpha=0.075, label=r"MC $p_5$–$p_{95}$"),
+    ] + [
+        Line2D([], [], color=_fc, lw=1.4, linestyle=":", alpha=0.65,
+               label=_FAMILY_LABELS[_fam])
+        for _fam, _fc in _FAMILY_COLORS.items()
+    ]
+    fig.legend(handles=_bary_handles, loc="upper left",
+               bbox_to_anchor=(0.545, 0.995), ncol=1,
+               title=r"Baryonic estimates ($v_N$)", **_leg_kw)
+    if model_handles:
+        fig.legend(handles=model_handles, loc="lower left",
+                   bbox_to_anchor=(0.073, 0.462), ncol=1, frameon=False,
+                   title="Gravity models", fontsize=9.4, title_fontsize=11.4,
+                   handlelength=2.35, handletextpad=0.38, labelspacing=0.08)
+
     fig.add_subplot(gs[1]).axis("off")
 
     # ── Vertical panels ────────────────────────────────────────────────────────
