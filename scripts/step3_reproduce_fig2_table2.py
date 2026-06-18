@@ -48,7 +48,7 @@ from vgrav.chi2 import N_PRIMARY
 from vgrav.figures import plot_fig2
 
 OUT = ROOT / "outputs"
-FIGS = ROOT / "figures"
+FIGS = ROOT / "figs"
 
 # Model catalogue — must match the CSV naming from step2
 MODEL_SPECS = [

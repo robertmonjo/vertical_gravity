@@ -75,19 +75,30 @@ def _pct(arr: np.ndarray, p: float, axis: int = 1) -> np.ndarray:
     return np.percentile(arr, p, axis=axis)
 
 
+def _to_float(v: str):
+    """Convert string to float; return None for empty strings."""
+    s = v.strip()
+    return float(s) if s else None
+
+
 def _load_obs(obs_path: Optional[Path]) -> tuple[list[dict], list[dict]]:
-    """Load observational data from fig2_observational_data.csv."""
+    """Load observational data from fig2_observational_data.csv.
+
+    Returns (rot_rows, vert_rows). Each row is a dict with numeric values
+    where available; empty cells become None. The 'type', 'dataset',
+    'source_paper', 'tracer', 'method', and 'in_chi2_fit' keys stay as str.
+    """
+    _STR_KEYS = {"type", "dataset", "source_paper", "tracer", "method", "in_chi2_fit"}
     if obs_path is None or not Path(obs_path).exists():
         return [], []
     rot_rows, vert_rows = [], []
     with open(obs_path, newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
+            parsed = {k: (v if k in _STR_KEYS else _to_float(v)) for k, v in row.items()}
             if row.get("type") == "radial":
-                rot_rows.append({k: (float(v) if k != "type" and k != "in_chi2_fit" else v)
-                                 for k, v in row.items()})
+                rot_rows.append(parsed)
             elif row.get("type") == "vertical":
-                vert_rows.append({k: (float(v) if k != "type" and k != "in_chi2_fit" else v)
-                                  for k, v in row.items()})
+                vert_rows.append(parsed)
     return rot_rows, vert_rows
 
 
@@ -186,11 +197,26 @@ def plot_fig2(
                     label=label, zorder=3)
 
     if rot_obs:
-        rr = np.array([r["R_kpc"] for r in rot_obs])
-        vv = np.array([r["vc_kms"] for r in rot_obs])
-        ss = np.array([r["sigma_total_kms"] for r in rot_obs])
-        ax_top.errorbar(rr, vv, yerr=ss, fmt="o", ms=3.5, color="black",
-                        ecolor="black", lw=0.8, zorder=10, label="Wang+2026")
+        # model-dependent context points (grey, background, not used in chi2)
+        dep = [r for r in rot_obs if r["in_chi2_fit"].strip().lower() != "true"
+               and r.get("vc_kms") is not None and r.get("sigma_vc_kms") is not None]
+        if dep:
+            ax_top.errorbar(
+                [r["R_kpc"] for r in dep], [r["vc_kms"] for r in dep],
+                yerr=[r["sigma_vc_kms"] for r in dep],
+                fmt="o", ms=2.2, color="#aaaaaa", ecolor="#cccccc",
+                lw=0.5, zorder=2, alpha=0.55, label="Other surveys (context)",
+            )
+        # model-independent fit points (black, foreground, enter chi2)
+        fit = [r for r in rot_obs if r["in_chi2_fit"].strip().lower() == "true"
+               and r.get("vc_kms") is not None and r.get("sigma_vc_kms") is not None]
+        if fit:
+            ax_top.errorbar(
+                [r["R_kpc"] for r in fit], [r["vc_kms"] for r in fit],
+                yerr=[r["sigma_vc_kms"] for r in fit],
+                fmt="o", ms=3.5, color="black", ecolor="black",
+                lw=0.8, zorder=10, label="Observations (fit)",
+            )
 
     ax_top.set_xscale("symlog", linthresh=2.0)
     ax_top.set_xlim(0.5, 250.0)
