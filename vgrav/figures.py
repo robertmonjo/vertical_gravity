@@ -1,10 +1,13 @@
 """Figure renderers for the vertical gravity benchmark.
 
-All renderers read from the pre-computed CSV files in outputs/.
+All renderers read from the pre-computed CSV files in outputs/ and data/.
 They reproduce the published figures without re-running any heavy computation.
 
 Functions
 ---------
+plot_fig1(data_dir=None, output_path=None, dpi=260)
+    Reproduce Fig. 1: baryonic density face-on (a) + meridional (b).
+
 plot_fig2(outputs_dir, obs_path=None, output_path=None, dpi=220)
     Reproduce Fig. 2: radial rotation curve (top) + 9 vertical panels (bottom).
 
@@ -19,6 +22,7 @@ from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import LogNorm
 from scipy.interpolate import PchipInterpolator
 from scipy.ndimage import gaussian_filter1d
 
@@ -38,6 +42,15 @@ _MODEL_STYLES: dict[str, tuple] = {
     "emergent_gravity":   ("Emergent Gravity (fixed)","#fdae61", ":",  1.8),
 }
 _BARY_COLOR = "#6baed6"
+
+# Baryonic family colours — matches make_fig2_consolidated.py
+_FAMILY_COLORS: dict[str, str] = {
+    "McGaugh2018_Imig2025": "#2b8cbe",
+    "Wang2026_Lian2022":    "#d95f02",
+    "McMillan2017":         "#31a354",
+    "deSalas2019_B2":       "#756bb1",
+    "Barros2016_MI":        "#c51b7d",
+}
 
 
 def _read_draw_csv(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -143,13 +156,45 @@ def plot_fig2(
                 "v_coords": v_coords, "v_draws": v_draws, "v_chi2": v_chi2,
             }
 
-    # Baryonic band from mc100 CSVs
-    bary_rad_p = outputs_dir / "mc100_baryonic_radial.csv"
+    # ── Baryonic target band ──────────────────────────────────────────────────
+    # Prefer baryonic_target_band.csv (processed band); fall back to baryon_band.csv
+    _data_dir = outputs_dir.parent / "data"
+    _tband_path = _data_dir / "baryonic_target_band.csv"
+    _bband_path = _data_dir / "baryon_band.csv"
+    for _p in (_data_dir.parent / "data" / "baryonic_target_band.csv",
+               outputs_dir / "baryonic_target_band.csv"):
+        if not _tband_path.exists():
+            _tband_path = _p
+    bband_R: Optional[np.ndarray] = None
+    bband_p5 = bband_p16 = bband_p84 = bband_p95 = None
+    bband_families: dict[str, np.ndarray] = {}
+    if _tband_path.exists():
+        with open(_tband_path, newline="", encoding="utf-8") as fh:
+            _tb = list(csv.DictReader(fh))
+        bband_R   = np.array([float(r["R_kpc"])              for r in _tb])
+        bband_p5  = np.array([float(r["Baryonic_target_p5"]) for r in _tb])
+        bband_p16 = np.array([float(r["Baryonic_target_p16"])for r in _tb])
+        bband_p84 = np.array([float(r["Baryonic_target_p84"])for r in _tb])
+        bband_p95 = np.array([float(r["Baryonic_target_p95"])for r in _tb])
+    elif _bband_path.exists():
+        with open(_bband_path, newline="", encoding="utf-8") as fh:
+            _tb = list(csv.DictReader(fh))
+        bband_R   = np.array([float(r["R_kpc"])      for r in _tb])
+        bband_p5  = np.array([float(r["hybrid_p5"])  for r in _tb])
+        bband_p16 = np.array([float(r["hybrid_p16"]) for r in _tb])
+        bband_p84 = np.array([float(r["hybrid_p84"]) for r in _tb])
+        bband_p95 = np.array([float(r["hybrid_p95"]) for r in _tb])
+    # Family dotted lines always come from baryon_band.csv
+    if _bband_path.exists():
+        with open(_bband_path, newline="", encoding="utf-8") as fh:
+            _bb = list(csv.DictReader(fh))
+        for _fam in _FAMILY_COLORS:
+            if f"center_{_fam}" in _bb[0]:
+                bband_families[_fam] = np.array([float(r[f"center_{_fam}"]) for r in _bb])
+
+    # Baryonic draws — only needed for vertical panels
     bary_vert_p = outputs_dir / "mc100_baryonic_vertical.csv"
-    bary_r, bary_r_draws = None, None
     bary_v_coords, bary_v_draws = None, None
-    if bary_rad_p.exists():
-        bary_r, bary_r_draws, _ = _read_draw_csv(bary_rad_p)
     if bary_vert_p.exists():
         bary_v_coords, bary_v_draws, _ = _read_draw_csv(bary_vert_p)
 
@@ -171,22 +216,25 @@ def plot_fig2(
     ax_top = fig.add_subplot(gs[0])
 
     # ── Radial panel ──────────────────────────────────────────────────────────
-    if bary_r is not None and bary_r_draws is not None:
-        sm = lambda v: gaussian_filter1d(v, sigma=6)
+    sm = lambda v: gaussian_filter1d(v, sigma=6)
+    if bband_R is not None:
         ax_top.fill_between(
-            bary_r, sm(_pct(bary_r_draws, 5)), sm(_pct(bary_r_draws, 95)),
-            color=_BARY_COLOR, alpha=0.08, lw=0, zorder=0,
+            bband_R, sm(bband_p5), sm(bband_p95),
+            color=_BARY_COLOR, alpha=0.075, lw=0, zorder=0,
         )
         ax_top.fill_between(
-            bary_r, sm(_pct(bary_r_draws, 16)), sm(_pct(bary_r_draws, 84)),
-            color=_BARY_COLOR, alpha=0.20, lw=0, zorder=0.05,
-            label=r"Baryonic MC100 $p_{16}$–$p_{84}$",
+            bband_R, sm(bband_p16), sm(bband_p84),
+            color=_BARY_COLOR, alpha=0.18, lw=0, zorder=0.05,
+            label=r"Baryonic band $p_{16}$–$p_{84}$",
         )
+        for _fam, _fcol in _FAMILY_COLORS.items():
+            if _fam in bband_families:
+                ax_top.plot(bband_R, bband_families[_fam],
+                            color=_fcol, lw=1.4, linestyle=":", alpha=0.65, zorder=0.08)
 
     for key, dat in available.items():
         label, color, ls, lw = _MODEL_STYLES[key]
         med = gaussian_filter1d(_pct(dat["r_draws"], 50), sigma=4)
-        chi2_med = float(np.median(dat["r_chi2"] + available.get("baryonic", dat)["r_chi2"] * 0))
         ax_top.fill_between(
             dat["r_coords"],
             gaussian_filter1d(_pct(dat["r_draws"], 16), sigma=4),
@@ -247,13 +295,13 @@ def plot_fig2(
                 zobs = np.array([v["z_kpc"] for v in obs_R])
                 phio = np.array([v["Phi_kms2"] for v in obs_R])
                 sigo = np.array([v["sigma_Phi_kms2"] for v in obs_R])
-                sig_z = np.array([v.get("sigma_z_kpc", 0.0) for v in obs_R])
+                sig_z_arr = np.array([v.get("sigma_z_kpc") or 0.0 for v in obs_R])
                 order_obs = np.argsort(zobs)
                 axp.fill_between(zobs[order_obs], (phio - sigo)[order_obs],
                                  (phio + sigo)[order_obs], color="#ff9999", alpha=0.28, lw=0)
-                axp.errorbar(zobs, phio, yerr=sigo, fmt="o", ms=3.0,
-                             color="black", ecolor="black", elinewidth=0.9,
-                             capsize=2.4, capthick=0.9, zorder=8)
+                axp.errorbar(zobs, phio, yerr=sigo, xerr=sig_z_arr,
+                             fmt="o", ms=3.0, color="black", ecolor="black",
+                             elinewidth=0.9, capsize=2.4, capthick=0.9, zorder=8)
 
         # Baryonic band
         if bary_v_coords is not None:
@@ -355,3 +403,178 @@ def print_table2(outputs_dir: Path, chi2_csv: Optional[Path] = None) -> None:
         name = model_name_map.get(key, key)
         print(f"  {name:<30} {p16:7.3f} {p50:7.3f} {p84:7.3f}")
     print()
+
+
+# ── Figure 1 ──────────────────────────────────────────────────────────────────
+
+_R_SUN = 8.277          # kpc (Reid+2019)
+_X_SUN_GC = -_R_SUN    # GC at (-R_SUN, 0) in Sun-centred display coords
+
+
+def plot_fig1(
+    data_dir: Optional[Path] = None,
+    output_path: Optional[Path] = None,
+    dpi: int = 260,
+) -> plt.Figure:
+    """Reproduce Fig. 1: baryonic density + spiral arm tracers.
+
+    Parameters
+    ----------
+    data_dir    : directory containing fig1_density_grid.npz and
+                  fig1_spiral_arms.csv.  Defaults to ../data/ relative to
+                  this file.
+    output_path : save figure here if given.
+    dpi         : figure resolution.
+    """
+    if data_dir is None:
+        data_dir = Path(__file__).resolve().parent.parent / "data"
+    data_dir = Path(data_dir)
+
+    # ── Load density grid ─────────────────────────────────────────────────
+    npz_path = data_dir / "fig1_density_grid.npz"
+    if not npz_path.exists():
+        raise FileNotFoundError(f"Density grid not found: {npz_path}")
+    d = np.load(npz_path)
+    R_grid = d["R"]
+    z_grid = d["z"]
+    rho_pc3 = d["rho_pc3"]
+    sigma = d["sigma"]
+
+    # ── Load spiral arm loci ──────────────────────────────────────────────
+    arms_path = data_dir / "fig1_spiral_arms.csv"
+    arm_display: dict[str, dict] = {}
+    arm_confirm: dict[str, dict] = {}
+    if arms_path.exists():
+        with open(arms_path, newline="", encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                name = row["arm"]
+                seg = row["segment"]
+                x = float(row["x_disp"])
+                y = float(row["y_disp"])
+                meta = {k: row[k] for k in ("color", "label", "lw")}
+                meta["lw"] = float(meta["lw"])
+                target = arm_display if seg == "display" else arm_confirm
+                if name not in target:
+                    target[name] = {**meta, "xs": [], "ys": []}
+                target[name]["xs"].append(x)
+                target[name]["ys"].append(y)
+
+    # ── Figure layout (matches canonical exactly) ─────────────────────────
+    _AH  = 4.00
+    _AW  = _AH * 52 / 48
+    _CBW = 0.20
+    _CBP = 0.07
+    _LM  = 0.85
+    _BOT = 0.62
+    _GAP = 1.35
+    _RM  = 0.90
+    FH   = 4.75
+    FW   = _LM + _AW + _CBP + _CBW + _GAP + _AW + _CBP + _CBW + _RM
+
+    AH  = _AH / FH;  AW  = _AW / FW
+    CBW = _CBW / FW; CBP = _CBP / FW
+    GAP = _GAP / FW; L0  = _LM / FW;  BOT = _BOT / FH
+
+    X1 = L0 + AW + CBP
+    X2 = X1 + CBW + GAP
+    X3 = X2 + AW + CBP
+
+    fig  = plt.figure(figsize=(FW, FH))
+    ax0  = fig.add_axes([L0, BOT, AW,  AH])
+    cax0 = fig.add_axes([X1, BOT, CBW, AH])
+    ax1  = fig.add_axes([X2, BOT, AW,  AH])
+    cax1 = fig.add_axes([X3, BOT, CBW, AH])
+
+    # ── Panel (a): face-on map ────────────────────────────────────────────
+    from matplotlib.colors import LogNorm
+    x  = np.linspace(-26.0, 26.0, 460)
+    y  = np.linspace(-32.0, 16.0, 460)
+    xx, yy = np.meshgrid(x, y, indexing="xy")
+    x_gc = _X_SUN_GC - yy
+    y_gc = xx
+    rr = np.sqrt(x_gc**2 + y_gc**2)
+    sigma_xy = np.interp(rr, R_grid, sigma, left=sigma[0], right=sigma[-1])
+
+    im0 = ax0.pcolormesh(
+        x, y, np.maximum(sigma_xy, 1e-4),
+        shading="auto", cmap="Greys",
+        norm=LogNorm(vmin=float(np.nanmin(sigma_xy[sigma_xy > 0])), vmax=1.0e3),
+        alpha=0.72,
+    )
+
+    for name, data in arm_display.items():
+        ax0.plot(data["xs"], data["ys"],
+                 color=data["color"], lw=data["lw"] * 0.65, alpha=0.50, zorder=5)
+    for name, data in arm_confirm.items():
+        ax0.plot(data["xs"], data["ys"],
+                 color=data["color"], lw=data["lw"], alpha=0.90, zorder=6,
+                 label=data["label"])
+
+    ax0.axhline(0.0, color="white", lw=0.8, alpha=0.42, zorder=4)
+    ax0.axvline(0.0, color="white", lw=0.8, alpha=0.42, zorder=4)
+    ax0.scatter([0], [_X_SUN_GC], marker="*",       s=95,  color="black",   zorder=8,
+                label="Galactic centre")
+    ax0.scatter([0], [0],         marker=r"$\odot$", s=160, color="#f4df3a", zorder=9,
+                linewidth=0.0, label="Sun")
+
+    ax0.set_aspect("equal")
+    ax0.set_xlim(-26, 26)
+    ax0.set_ylim(-32, 16)
+    ax0.set_xlabel(r"$x_\odot$ [kpc]", fontsize=12)
+    ax0.set_ylabel(r"$y_\odot$ [kpc]", fontsize=12)
+    ax0.text(0.025, 0.965, "(a)", transform=ax0.transAxes,
+             ha="left", va="top", fontsize=12)
+
+    cb0 = fig.colorbar(im0, cax=cax0)
+    cb0.set_label(r"$\Sigma_b$ [$M_\odot$ pc$^{-2}$]", fontsize=10)
+    cb0.ax.tick_params(labelsize=9)
+
+    leg = ax0.legend(frameon=True, fontsize=7.8, loc="lower left",
+                     ncol=2, handlelength=2.0, columnspacing=0.6)
+    leg.set_zorder(30)
+    leg.get_frame().set_facecolor("white")
+    leg.get_frame().set_alpha(0.58)
+    leg.get_frame().set_linewidth(0.0)
+    for sp in ax0.spines.values():
+        sp.set_linewidth(0.85)
+    ax0.tick_params(direction="in", top=True, right=True, labelsize=10, length=4)
+
+    # ── Panel (b): meridional cross-section ──────────────────────────────
+    mask_R = (R_grid >= 0.0) & (R_grid <= 35.0)
+    z_pos = z_grid[z_grid >= 0]
+    mask_z = z_pos <= 8.0
+    rho_pos = rho_pc3[:, z_grid >= 0]
+
+    im1 = ax1.pcolormesh(
+        R_grid[mask_R], z_pos[mask_z],
+        np.maximum(rho_pos[np.ix_(mask_R, mask_z)].T, 1.0e-8),
+        shading="auto", cmap="Greys",
+        norm=LogNorm(
+            vmin=1.0e-7,
+            vmax=max(1.0e1, float(np.nanpercentile(rho_pos[np.ix_(mask_R, mask_z)], 99.8))),
+        ),
+    )
+    levels = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0]
+    cs = ax1.contour(
+        R_grid[mask_R], z_pos[mask_z],
+        rho_pos[np.ix_(mask_R, mask_z)].T,
+        levels=levels, colors="white", linewidths=0.65, alpha=0.82,
+    )
+    ax1.clabel(cs, inline=True, fontsize=7,
+               fmt=lambda v: rf"$10^{{{int(np.log10(v))}}}$")
+    ax1.set_xlabel(r"$R$ [kpc]", fontsize=12)
+    ax1.set_ylabel(r"$z$ [kpc]", fontsize=12)
+    ax1.text(0.025, 0.965, "(b)", transform=ax1.transAxes,
+             ha="left", va="top", fontsize=12)
+
+    cb1 = fig.colorbar(im1, cax=cax1)
+    cb1.set_label(r"$\rho_b$ [$M_\odot$ pc$^{-3}$]", fontsize=10)
+    cb1.ax.tick_params(labelsize=9)
+    for sp in ax1.spines.values():
+        sp.set_linewidth(0.85)
+    ax1.tick_params(direction="in", top=True, right=True, labelsize=10, length=4)
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
+        print(f"Figure saved: {output_path}")
+    return fig

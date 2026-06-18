@@ -36,11 +36,14 @@ export PYTHONPATH=/path/to/release:$PYTHONPATH
 
 ### Mode 1 — Fast verification (~seconds)
 
-Reads the pre-computed CSVs in `outputs/` and reproduces Table 2 + Fig. 2.
+Reads the pre-computed CSVs in `outputs/` and reproduces Figs. 1–2 + Table 2.
 No heavy computation required.
 
 ```bash
-# Reproduce Table 2 (chi²_ν summary)
+# Reproduce Fig. 1 (baryonic density + spiral arms)
+python scripts/step0_reproduce_fig1.py
+
+# Reproduce Table 2 + Fig. 2 (rotation curve + vertical potential)
 python scripts/step3_reproduce_fig2_table2.py
 
 # Reproduce Fig. 2 only
@@ -117,10 +120,15 @@ release/
 ├── requirements.txt        Python dependencies
 ├── README.md               This file
 │
-├── data/                   Bundled observational data
+├── data/                   Bundled observational and model data
 │   ├── wang2026_rotation_curve.csv      152 radial data points
 │   ├── wang2026_vertical_potential.csv  44 vertical potential points
-│   └── baryon_band.csv                  Hybrid baryonic band (5 percentiles)
+│   ├── baryon_band.csv                  Hybrid baryonic band (5 families, centers)
+│   ├── baryonic_target_band.csv         Smoothed target band percentiles (Fig. 2)
+│   ├── fig2_observational_catalog.csv   Full radial observation catalog (262 rows)
+│   ├── feng2026_cepheid_rotation_curve.csv  Cepheid RC context points
+│   ├── fig1_density_grid.npz            Pre-computed baryonic density grid (Fig. 1)
+│   └── fig1_spiral_arms.csv             Reid+2019 spiral arm loci (Fig. 1)
 │
 ├── outputs/                Pre-computed results (fast-mode)
 │   ├── mc100_baryonic_{radial,vertical}.csv    100 baryonic draws
@@ -140,6 +148,7 @@ release/
 │   └── figures.py          Fig. 2 renderer + Table 2 printer
 │
 └── scripts/
+    ├── step0_reproduce_fig1.py         Reproduce Fig. 1 (density + spiral arms)
     ├── step1_build_baryonic_mc100.py   MC100 baryonic draws
     ├── step2_fit_all_models.py         Gravity model fitting
     ├── step3_reproduce_fig2_table2.py  Main verification script
