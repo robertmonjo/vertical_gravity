@@ -21,5 +21,7 @@ keywords:
   - reproducibility
 abstract: >
   Reproducibility package for 'Vertical gravitational potential of the Milky Way
-  as a multi-model benchmark' (Wang et al. 2026). Tests 11 gravity models against
-  Wang+2026 observational data using the vgrav Python library.
+  as a multi-model benchmark' (Wang et al. 2026). Tests 11 model variants from
+  7 gravity frameworks (QUMOND, STVG, CDM NFW/Einasto, f(R) screened, Refracted
+  Gravity, VEG, and HMG anisotropic) against Wang+2026 observational data.
+  HMG is competitive with CDM Einasto in ~46% of baryonic realizations.

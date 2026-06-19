@@ -1,7 +1,7 @@
 {
   "title": "vgrav: Vertical gravitational potential of the Milky Way as a multi-model benchmark",
   "upload_type": "software",
-  "description": "Reproducibility package for 'Vertical gravitational potential of the Milky Way as a multi-model benchmark' (Wang et al. 2026). Tests 11 gravity models (CDM NFW/Einasto, QUMOND, STVG, f(R) screened, Refracted Gravity, Emergent Gravity, HMG anisotropic) against Wang+2026 rotation-curve and vertical-potential data. Includes the vgrav Python library, pre-computed outputs, and step-by-step reproduction scripts.",
+  "description": "Reproducibility package for 'Vertical gravitational potential of the Milky Way as a multi-model benchmark' (Wang et al. 2026). Tests 11 model variants from 7 gravity frameworks (QUMOND, STVG, CDM NFW/Einasto, f(R) screened, Refracted Gravity, VEG, and HMG anisotropic) against Wang+2026 Milky Way rotation-curve and vertical-potential data. HMG is competitive with CDM Einasto in ~46% of baryonic realizations (within 10%), and outperforms it in ~28%. Includes the vgrav Python library, pre-computed outputs, and step-by-step reproduction scripts.",
   "creators": [
     {
       "name": "Monjo, Robert",
