@@ -2,12 +2,12 @@
 
 Reproducibility package for the paper:
 
-> **Vertical gravitational potential of the Milky Way as a multi-model benchmark**
-> (Wang et al. 2026, submitted)
+> **Radial–vertical gravity decoupling in the Milky Way: modified gravity and dark matter tests using Gaia DR3**
+> Monjo & Banik (2026, submitted)
 
 This package contains the full analysis pipeline and pre-computed outputs
-for testing 11 gravity models against Wang+2026 rotation-curve and
-vertical-potential data.
+for testing 12 gravity model variants (from 7 frameworks) against Gaia DR3
+rotation-curve and vertical-potential data from Wang+2026 and Lian+2022.
 
 ---
 
@@ -63,13 +63,14 @@ Baryonic Newtonian                 0  151.797 194.653 231.409
 QUMOND simple                      0    3.911   5.857  11.487
 QUMOND standard                    0   29.935  50.615  71.322
 QUMOND MLS/RAR *                   0    4.582   7.659  37.000
-STVG                               1    4.389   8.222  14.594
+VEG original                       0    9.184  23.932  46.425
+VEG free a_EG                      1    5.062   7.650  10.374
+STVG                               2    4.412   8.264  14.669
 CDM NFW                            2    2.571   3.270   4.431
-CDM Einasto                        2    2.187   2.768   3.585
-HMG anisotropic (k=1)              1    2.583   3.277   4.568
+CDM Einasto                        3    2.199   2.783   3.603
+HMG (This Work)                    1    2.583   3.277   4.568
 f(R) screened                      2    6.593   8.082  10.024
 Refracted Gravity                  2    6.480   8.916  11.233
-Emergent Gravity (fixed)           0   12.835  23.637  42.196
 --------------------------------------------------------------
 * uses old stochastic ensemble
 ```
@@ -237,14 +238,15 @@ total mass variation.  Seed: 20260607.
 | `baryonic` | Baryonic Newtonian | 0 | Reference: disc+gas+bulge only |
 | `qumond_simple` | QUMOND simple | 0 | ν = 0.5 + √(0.25 + 1/x) |
 | `qumond_standard` | QUMOND standard | 0 | ν = √(0.5 + √(0.25 + 1/x²)) |
-| `qumond_mls` | QUMOND MLS/RAR | 0 | ν = 1/(1 − exp(−√x)) |
-| `stvg` | STVG | 1 | Yukawa extra force, α=10.68, μ=0.07/kpc |
+| `qumond_mls` | QUMOND MLS/RAR | 0 | ν = 1/(1 − exp(−√x)); old stochastic draws |
+| `veg_original` | VEG original | 0 | ν = 1 + √(a_EG/g_N), fixed a_EG=cH₀/6 |
+| `emergent_gravity` | VEG free a_EG | 1 | ν = 1 + √(a_EG/g_N), a_EG free |
+| `stvg` | STVG | 2 | Yukawa extra force, α, μ free |
 | `cdm_nfw` | CDM NFW | 2 | NFW halo, local DM density fit |
-| `cdm_einasto` | CDM Einasto | 2 | Einasto halo, α=0.97 |
-| `hmg_k1` | HMG anisotropic | 1 | f_R = √(1+β·extra/g_N), anisotropic |
+| `cdm_einasto` | CDM Einasto | 3 | Einasto halo, α, ρ_s, r_s free |
+| `hmg_k1` | HMG (This Work) | 1 | f_R = √(1+β·extra/g_N), anisotropic |
 | `fr_screened` | f(R) screened | 2 | ν = 1 + δ·exp(−x/xc) |
 | `refracted_gravity` | Refracted Gravity | 2 | ε(x) screening function |
-| `emergent_gravity` | Emergent Gravity | 0 | ν = 1 + √(a_EG/g_N), fixed a_EG=cH₀/6 |
 
 Here x = |g_N|/a₀, a₀ = 1.2×10⁻¹⁰ m/s², k = number of free parameters.
 
@@ -255,11 +257,13 @@ Here x = |g_N|/a₀, a₀ = 1.2×10⁻¹⁰ m/s², k = number of free parameters
 If you use this package, please cite:
 
 ```bibtex
-@article{wang2026vertical,
-  author  = {Wang, ...},
-  title   = {Vertical gravitational potential of the Milky Way},
-  journal = {...},
+@article{monjobanik2026vertical,
+  author  = {Monjo, Robert and Banik, Indranil},
+  title   = {Radial--vertical gravity decoupling in the {Milky Way}:
+             modified gravity and dark matter tests using {Gaia DR3}},
+  journal = {Astronomy \& Astrophysics},
   year    = {2026},
+  note    = {submitted},
 }
 ```
 
