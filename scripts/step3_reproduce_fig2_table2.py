@@ -11,25 +11,26 @@ Usage
 
 Expected outputs
 ----------------
-  outputs/mc100_chi2_all_models.csv  — 1100 rows (100 draws × 11 models)
+  outputs/mc100_chi2_all_models.csv  — rows per draw per model
   figures/fig2_reproduced.png        — reproduction of Fig. 2
 
 Verification
 ------------
-Expected chi^2_nu values (p50, 100 qcopula draws, seed=20260607):
-  Baryonic Newtonian    : ~194.7   (large: baryons alone cannot explain RC)
-  QUMOND simple         : ~5.9
-  QUMOND standard       : ~50.6
-  QUMOND MLS/RAR        : ~7.7
-  STVG                  : ~8.2
-  CDM NFW               : ~3.3
-  CDM Einasto           : ~2.8
-  HMG anisotropic (k=1) : ~3.3
-  f(R) screened  (k=2)  : ~8.1
-  Refracted Gravity(k=2): ~8.9
-  Emergent Gravity (k=0): ~23.6
+Expected chi^2_nu values (p16/p50/p84, MC100 baryonic ensemble, seed=20260607):
+  Baryonic Newtonian      (k=0): 151.8 / 194.7 / 231.4  (missing-mass baseline)
+  QUMOND simple           (k=0):   3.9 /   5.9 /  11.5
+  QUMOND standard         (k=0):  29.9 /  50.6 /  71.3
+  QUMOND MLS/RAR          (k=0):   4.6 /   7.7 /  37.0   (* old stochastic draws)
+  VEG original            (k=0):   9.2 /  23.9 /  46.4   (* 5 pseudo-draws)
+  VEG free a_EG           (k=1):   5.1 /   7.7 /  10.4   (* 5 pseudo-draws)
+  STVG                    (k=2):   4.4 /   8.3 /  14.7
+  CDM NFW                 (k=2):   2.6 /   3.3 /   4.4
+  CDM Einasto             (k=3):   2.2 /   2.8 /   3.6
+  HMG (This Work)         (k=1):   2.6 /   3.3 /   4.6
+  f(R) screened           (k=2):   6.6 /   8.1 /  10.0
+  Refracted Gravity       (k=2):   6.5 /   8.9 /  11.2
 
-Note: exact values depend on the baryonic ensemble used.
+Note: chi^2_nu = chi^2_total / (N_PRIMARY - k), N_PRIMARY=196.
 """
 from __future__ import annotations
 
@@ -57,13 +58,14 @@ MODEL_SPECS = [
     ("qumond_simple",     "QUMOND simple",                             0, "qcopula"),
     ("qumond_standard",   "QUMOND standard",                           0, "qcopula"),
     ("qumond_mls",        "QUMOND MLS/RAR",                            0, "old_stochastic"),
-    ("stvg",              "STVG",                                      1, "qcopula"),
+    ("veg_original",      "VEG original",                              0, "precomputed"),
+    ("emergent_gravity",  "VEG free a_EG",                             1, "precomputed"),
+    ("stvg",              "STVG",                                      2, "qcopula"),
     ("cdm_nfw",           "CDM NFW",                                   2, "qcopula"),
-    ("cdm_einasto",       "CDM Einasto",                               2, "qcopula"),
-    ("hmg_k1",            "HMG anisotropic (k=1)",                     1, "npz"),
+    ("cdm_einasto",       "CDM Einasto",                               3, "qcopula"),
+    ("hmg_k1",            "HMG (This Work)",                           1, "qcopula"),
     ("fr_screened",       "f(R) screened",                             2, "npz"),
     ("refracted_gravity", "Refracted Gravity",                         2, "npz"),
-    ("emergent_gravity",  "VEG (free a_EG)",                             1, "precomputed"),
 ]
 N_DRAWS = 100
 
