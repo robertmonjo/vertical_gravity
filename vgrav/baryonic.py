@@ -302,3 +302,101 @@ def make_vertical_grid(rv: np.ndarray, zv: np.ndarray) -> np.ndarray:
     """Return N_vert × 2 array of (R, z) obs points sorted by (R, z)."""
     idx = np.lexsort((zv, rv))
     return np.column_stack([rv[idx], zv[idx]])
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cylindrical-solver support: basis potentials + per-draw scale calibration
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def basis_potentials(grid):
+    """Pre-compute the two Newtonian basis potentials on a cylindrical grid.
+
+    The total baryonic density decomposes linearly as:
+        rho(R,z; s) = s * rho_stellar(R,z) + rho_fixed(R,z)
+
+    where rho_stellar = thin + thick stellar discs (scalable) and
+    rho_fixed = HI + H2 gas + bulge (held fixed).
+
+    Because Poisson's equation is linear, the total potential is:
+        phi_N(R,z; s) = s * phi_stellar(R,z) + phi_fixed(R,z)
+
+    This function solves for phi_stellar and phi_fixed once so that per-draw
+    scaling requires only interpolation (no further Poisson solves).
+
+    Parameters
+    ----------
+    grid : CylGrid from vgrav.solver.make_grid
+
+    Returns
+    -------
+    rho_stellar : stellar density on grid [Msun/kpc³]
+    phi_stellar : Newtonian potential of stellar component [(km/s)²]
+    mass_stellar : total stellar mass [Msun]
+    rho_fixed   : gas + bulge density on grid [Msun/kpc³]
+    phi_fixed   : Newtonian potential of fixed components [(km/s)²]
+    mass_fixed  : total fixed mass [Msun]
+    """
+    from vgrav.solver import solve_newtonian
+
+    RR, ZZ = np.meshgrid(grid.R, grid.z, indexing="ij")
+
+    rho_stellar = stellar_density(RR, ZZ, True) + stellar_density(RR, ZZ, False)
+    rho_fixed = (
+        gas_density(RR, ZZ, True) + gas_density(RR, ZZ, False) + bulge_density(RR, ZZ)
+    )
+
+    mass_stellar, phi_stellar = solve_newtonian(grid, rho_stellar)
+    mass_fixed, phi_fixed = solve_newtonian(grid, rho_fixed)
+
+    return rho_stellar, phi_stellar, mass_stellar, rho_fixed, phi_fixed, mass_fixed
+
+
+def calibrate_scale(
+    phi_stellar,
+    phi_fixed,
+    mass_stellar: float,
+    mass_fixed: float,
+    grid,
+    vc_target: np.ndarray,
+    r_line: np.ndarray,
+) -> float:
+    """Find the stellar scale factor s that best matches a target rotation curve.
+
+    Solves the least-squares problem:
+        min_s  ||s * v²_stellar(R) + v²_fixed(R) - v²_target(R)||²
+
+    where v²(R) = R * ∂φ/∂R|_{z=0} from the pre-computed basis potentials.
+    The fit is restricted to 1 ≤ R ≤ 25 kpc where the data are most constraining.
+
+    Parameters
+    ----------
+    phi_stellar, phi_fixed : basis potentials on grid [(km/s)²]
+    mass_stellar, mass_fixed : basis masses [Msun]
+    grid    : CylGrid
+    vc_target : target rotation curve at r_line [km/s]
+    r_line    : radii for vc_target [kpc]
+
+    Returns
+    -------
+    s : stellar scale factor (clipped to [0.3, 4.0])
+    """
+    from vgrav.solver import radial_v2, blend_outer
+    import math as _math
+    from vgrav._constants import G as _G
+
+    v2_st = radial_v2(grid, phi_stellar, r_line)
+    v2_fx = radial_v2(grid, phi_fixed, r_line)
+
+    # Blend to monopole beyond 55 kpc (solver boundary inaccuracy)
+    outer_st = _G * mass_stellar / np.maximum(r_line, 1e-9)
+    outer_fx = _G * mass_fixed / np.maximum(r_line, 1e-9)
+    v2_st = blend_outer(r_line, v2_st, outer_st)
+    v2_fx = blend_outer(r_line, v2_fx, outer_fx)
+
+    mask = (r_line >= 1.0) & (r_line <= 25.0)
+    v2_t = vc_target[mask] ** 2
+    A = v2_st[mask]
+    b = v2_t - v2_fx[mask]
+
+    s = float(np.dot(A, b) / np.maximum(np.dot(A, A), 1e-30))
+    return float(np.clip(s, 0.3, 4.0))

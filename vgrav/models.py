@@ -87,6 +87,193 @@ def hmg_factor(gN: np.ndarray, beta: float = 1.0) -> np.ndarray:
     return np.sqrt(1.0 + beta * HMG_EXTRA / np.maximum(np.abs(np.asarray(gN, dtype=float)), 1e-12))
 
 
+# ── Real HMG (neighbourhood scale s) ─────────────────────────────────────────
+# These implement the published HMG formulae exactly as used in the paper.
+# Reference: Monjo (2023) Eqs. 27 and 37; fit_hmg_common_s_mc100.py
+
+from vgrav._constants import C_KMS, T0_KPC_PER_KMS
+
+
+def hmg_angular_q_from_x(x: np.ndarray) -> np.ndarray:
+    """Projected angle factor q(x) from the HMG angular geometry.
+
+    Parameters
+    ----------
+    x : dimensionless speed ratio (sqrt(2)*v_N / (eps * v_H))
+    """
+    phi_u = math.pi / 3.0
+    phi_cen = 0.49 * math.pi
+    x = np.maximum(np.asarray(x, dtype=float), 1e-12)
+    delta = np.abs(x * x - 1.0) / (x * x + 1.0)
+    s2 = math.sin(phi_u) ** 2 + (math.sin(phi_cen) ** 2 - math.sin(phi_u) ** 2) * delta
+    gamma = np.arcsin(np.sqrt(np.clip(s2, 0.0, 1.0)))
+    return np.cos(gamma) / gamma
+
+
+def epsilon_from_s(v2_n: np.ndarray, radius: np.ndarray, s: float) -> np.ndarray:
+    """HMG confinement parameter ε(s).
+
+    ε² = 2 v²_N / (s³ v²_H) + 1/6,  v_H = R / T₀
+    """
+    v_h = np.asarray(radius, dtype=float) / T0_KPC_PER_KMS
+    return np.sqrt(2.0 * np.asarray(v2_n, dtype=float) / (s ** 3 * v_h * v_h) + 1.0 / 6.0)
+
+
+def hmg_radial(v2_n: np.ndarray, radius: np.ndarray, s: float) -> np.ndarray:
+    """HMG circular speed using Eq. 37 (centripetal form).
+
+    v²_tot = (1 + extra/g_N) * v²_N,  extra = 2c/T₀ * q(x)
+
+    Parameters
+    ----------
+    v2_n   : Newtonian v² on the radial grid [(km/s)²]
+    radius : corresponding radii [kpc]
+    s      : neighbourhood scale (free parameter, k=1)
+
+    Returns
+    -------
+    vc : [km/s]
+    """
+    v2_n = np.asarray(v2_n, dtype=float)
+    radius = np.asarray(radius, dtype=float)
+    g_n = np.maximum(v2_n / np.maximum(radius, 1e-12), 1e-12)
+    v_h = radius / T0_KPC_PER_KMS
+    eps = epsilon_from_s(v2_n, radius, s)
+    x = np.sqrt(2.0 * np.maximum(v2_n, 1e-12)) / (eps * v_h)
+    q = hmg_angular_q_from_x(x)
+    extra = 2.0 * C_KMS / T0_KPC_PER_KMS * q
+    return np.sqrt(np.maximum((1.0 + extra / g_n) * v2_n, 0.0))
+
+
+def integrate_delta_force(
+    delta_k: np.ndarray,
+    rv: np.ndarray,
+    zv: np.ndarray,
+) -> np.ndarray:
+    """Cumulative integral of Δk_z(R, z) over z from 0 to z_obs.
+
+    Used to compute the HMG vertical potential correction:
+    Δφ(R,z) = ∫₀ᶻ Δk_z(R,z') dz'
+
+    Parameters
+    ----------
+    delta_k : extra vertical force Δk_z at each (R,z) obs point [(km/s)²/kpc]
+    rv, zv  : (R, z) observation coordinates [kpc]
+    """
+    out = np.zeros_like(delta_k)
+    for radius in sorted(set(rv)):
+        idx = np.where(np.abs(rv - radius) < 1e-8)[0]
+        order = idx[np.argsort(zv[idx])]
+        z = zv[order]
+        dk = delta_k[order]
+        if len(z) and z[0] <= 1e-12:
+            z0, dk0 = z, dk
+        else:
+            z0 = np.r_[0.0, z]
+            dk0 = np.r_[dk[0], dk]
+        cumulative = np.zeros_like(z0)
+        for i in range(1, len(z0)):
+            cumulative[i] = cumulative[i - 1] + 0.5 * (dk0[i] + dk0[i - 1]) * (z0[i] - z0[i - 1])
+        out[order] = cumulative if len(z) and z[0] <= 1e-12 else cumulative[1:]
+    return out
+
+
+def hmg_eq27_vertical(
+    rv: np.ndarray,
+    zv: np.ndarray,
+    v2_n_vert: np.ndarray,
+    phi_n: np.ndarray,
+    s: float,
+) -> np.ndarray:
+    """HMG vertical potential Δφ using Eq. 27 (spatial projection).
+
+    Computes the HMG extra vertical force and integrates it over z.
+
+    Parameters
+    ----------
+    rv, zv     : (R, z) observation coordinates [kpc]
+    v2_n_vert  : Newtonian v²_N interpolated at obs R values [(km/s)²]
+    phi_n      : Newtonian Φ(R,z)−Φ(R,0) at obs points [(km/s)²]
+    s          : neighbourhood scale
+
+    Returns
+    -------
+    phi_hmg : HMG Φ(R,z)−Φ(R,0) [(km/s)²]
+    """
+    from vgrav.chi2 import vertical_force_from_phi
+    rv = np.asarray(rv, dtype=float)
+    zv = np.asarray(zv, dtype=float)
+    r = np.sqrt(rv * rv + zv * zv)
+    k_z_n = vertical_force_from_phi(phi_n, rv, zv)
+    g_r_n = np.maximum(v2_n_vert / np.maximum(rv, 1e-9), 1e-12)
+    g_n = np.sqrt(g_r_n * g_r_n + k_z_n * k_z_n)
+    v2_space = np.maximum(r * g_n, 1e-12)
+    v_h = r / T0_KPC_PER_KMS
+    eps_z = epsilon_from_s(v2_space, r, s)
+    x_z = np.sqrt(2.0 * v2_space) / (eps_z * v_h)
+    q_z = hmg_angular_q_from_x(x_z)
+    extra_space = C_KMS / T0_KPC_PER_KMS * q_z
+    delta_k = extra_space * zv / np.maximum(r, 1e-12)
+    return phi_n + integrate_delta_force(delta_k, rv, zv)
+
+
+def predict_hmg_common_s(
+    r_grid: np.ndarray,
+    v2_n_radial: np.ndarray,
+    v2_n_vert: np.ndarray,
+    phi_n: np.ndarray,
+    rv_obs: np.ndarray,
+    zv_obs: np.ndarray,
+    rr: np.ndarray,
+    vv: np.ndarray,
+    ss: np.ndarray,
+    phi_obs: np.ndarray,
+    sig_phi: np.ndarray,
+    sig_z: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Fit the HMG neighbourhood scale s and return model predictions.
+
+    This is the exact method used in the paper (fit_hmg_common_s_mc100.py):
+    a single s is fitted per baryonic draw by minimizing chi2_total.
+
+    Parameters
+    ----------
+    r_grid       : radii for vc evaluation [kpc]
+    v2_n_radial  : Newtonian v²_N on r_grid [(km/s)²]
+    v2_n_vert    : Newtonian v²_N interpolated at rv_obs [(km/s)²]
+    phi_n        : Newtonian Φ(R,z)−Φ(R,0) at obs points [(km/s)²]
+    rv_obs, zv_obs : obs (R,z) [kpc]
+    rr, vv, ss   : radial fit points
+    phi_obs, sig_phi, sig_z : vertical fit arrays
+
+    Returns
+    -------
+    vc    : [km/s] on r_grid
+    phi   : [(km/s)²] at obs points
+    s_fit : fitted neighbourhood scale
+    """
+    from vgrav.chi2 import vertical_force_from_phi
+    from scipy.optimize import minimize_scalar
+
+    def score(log_s):
+        s = math.exp(float(log_s))
+        vc_line = hmg_radial(v2_n_radial, r_grid, s)
+        phi = hmg_eq27_vertical(rv_obs, zv_obs, v2_n_vert, phi_n, s)
+        vc_at = np.interp(rr, r_grid, vc_line)
+        kz = vertical_force_from_phi(phi, rv_obs, zv_obs)
+        sig_eff = np.sqrt(sig_phi ** 2 + (kz * sig_z) ** 2)
+        chi_r = float(np.sum(((vc_at - vv) / ss) ** 2))
+        chi_z = float(np.sum(((phi - phi_obs) / sig_eff) ** 2))
+        return chi_r + chi_z
+
+    fit = minimize_scalar(score, bounds=(0.0, math.log(300.0)), method="bounded",
+                          options={"xatol": 1e-9, "maxiter": 500})
+    s_fit = math.exp(float(fit.x))
+    vc_out = hmg_radial(v2_n_radial, r_grid, s_fit)
+    phi_out = hmg_eq27_vertical(rv_obs, zv_obs, v2_n_vert, phi_n, s_fit)
+    return vc_out, phi_out, s_fit
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Algebraic nu-proxy functions (f(R), Refracted Gravity, VEG)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -511,18 +698,20 @@ def predict_qumond_solver(
     zv: np.ndarray,
     kind: str = "standard",
     a0_scale: float = 1.0,
+    phi_n_precomputed: Optional[np.ndarray] = None,
 ):
     """QUMOND predictions from the full 3D Poisson solver.
 
     Parameters
     ----------
-    cyl_grid  : CylGrid (from solver.make_grid)
-    rho_3d    : density on cyl_grid [Msun/kpc^3]
-    boundary_n: Newtonian boundary values on cyl_grid
-    Rrot      : radii for v_c [kpc]
-    Rv, zv    : obs (R, z) for phi [kpc]
-    kind      : MOND interpolation function
-    a0_scale  : free a0 multiplier
+    cyl_grid          : CylGrid (from solver.make_grid)
+    rho_3d            : density on cyl_grid [Msun/kpc^3]
+    boundary_n        : Newtonian boundary values on cyl_grid
+    Rrot              : radii for v_c [kpc]
+    Rv, zv            : obs (R, z) for phi [kpc]
+    kind              : MOND interpolation function
+    a0_scale          : free a0 multiplier
+    phi_n_precomputed : pre-computed Newtonian phi on cyl_grid (skips first solve)
 
     Returns
     -------
@@ -535,7 +724,10 @@ def predict_qumond_solver(
     )
 
     a0 = A0_KMS2_PER_KPC * a0_scale
-    phi_n = solve_axisymmetric(cyl_grid, 4.0 * _math.pi * G * rho_3d, boundary_n)
+    if phi_n_precomputed is not None:
+        phi_n = phi_n_precomputed
+    else:
+        phi_n = solve_axisymmetric(cyl_grid, 4.0 * _math.pi * G * rho_3d, boundary_n)
     dphi_n_dR, dphi_n_dz = gradients(cyl_grid, phi_n)
     gabs = np.sqrt(dphi_n_dR ** 2 + dphi_n_dz ** 2)
     nu = nu_mond(gabs / a0, kind)
@@ -552,3 +744,96 @@ def predict_qumond_solver(
     vc_out = np.sqrt(np.maximum(Rrot * interp2(cyl_grid, dphiq_dR, Rrot, z0_rot), 0.0))
     phi_out = interp2(cyl_grid, phi_q, Rv, zv) - interp2(cyl_grid, phi_q, Rv, z0_vert)
     return vc_out, phi_out
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Per-draw CDM parameter fitting
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _cdm_score(
+    r_grid, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, sig_phi, sig_z,
+    mass_func,
+):
+    """Evaluate CDM chi2_total given a spherical halo mass function."""
+    from vgrav.chi2 import vertical_force_from_phi
+    vc_h, phi_h = spherical_vc_and_phi(r_grid, rv_obs, zv_obs, mass_func)
+    vc_tot = np.sqrt(np.maximum(vc_n ** 2 + vc_h ** 2, 0.0))
+    phi_tot = phi_n + phi_h
+    vc_at = np.interp(rr, r_grid, vc_tot)
+    kz = vertical_force_from_phi(phi_tot, rv_obs, zv_obs)
+    sig_eff = np.sqrt(sig_phi ** 2 + (kz * sig_z) ** 2)
+    chi_r = float(np.sum(((vc_at - vv) / ss) ** 2))
+    chi_z = float(np.sum(((phi_tot - phi_obs) / sig_eff) ** 2))
+    return chi_r + chi_z, vc_tot, phi_tot
+
+
+def predict_cdm_nfw_per_draw(
+    r_grid, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, sig_phi, sig_z,
+    x0=(-0.46, 1.27),
+    bounds=((-3.0, 1.0), (0.0, 2.3)),
+):
+    """Fit CDM-NFW parameters per baryonic draw.
+
+    Optimizes (log10_rho_local [GeV/cm³], log10_rs [kpc]) to minimise
+    chi2_total for this draw, exactly as in the paper pipeline.
+
+    Returns
+    -------
+    vc    : [km/s] on r_grid
+    phi   : [(km/s)²] at obs points
+    theta : (log10_rho_local, log10_rs) best-fit
+    """
+    from scipy.optimize import minimize
+
+    def obj(t):
+        rho_s, rs = nfw_density_from_local(float(t[0]), float(t[1]))
+        val, _, _ = _cdm_score(
+            r_grid, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, sig_phi, sig_z,
+            lambda r: nfw_mass(r, rho_s, rs),
+        )
+        return val
+
+    res = minimize(obj, x0, method="L-BFGS-B",
+                   bounds=bounds, options={"maxiter": 200, "ftol": 1e-10})
+    rho_s, rs = nfw_density_from_local(float(res.x[0]), float(res.x[1]))
+    _, vc_out, phi_out = _cdm_score(
+        r_grid, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, sig_phi, sig_z,
+        lambda r: nfw_mass(r, rho_s, rs),
+    )
+    return vc_out, phi_out, tuple(res.x)
+
+
+def predict_cdm_einasto_per_draw(
+    r_grid, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, sig_phi, sig_z,
+    x0=(-0.41, 0.98, 0.63),
+    bounds=((-3.0, 1.0), (0.0, 2.3), (0.1, 3.0)),
+):
+    """Fit CDM-Einasto parameters per baryonic draw.
+
+    Optimizes (log10_rho_local, log10_rs, alpha) to minimise chi2_total.
+    k=3 free parameters as in the paper.
+
+    Returns
+    -------
+    vc    : [km/s] on r_grid
+    phi   : [(km/s)²] at obs points
+    theta : (log10_rho_local, log10_rs, alpha) best-fit
+    """
+    from scipy.optimize import minimize
+
+    def obj(t):
+        rho_s, rs, al = einasto_density_from_local(float(t[0]), float(t[1]), float(t[2]))
+        val, _, _ = _cdm_score(
+            r_grid, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, sig_phi, sig_z,
+            lambda r: einasto_mass(r, rho_s, rs, al),
+        )
+        return val
+
+    res = minimize(obj, x0, method="L-BFGS-B",
+                   bounds=bounds, options={"maxiter": 200, "ftol": 1e-10})
+    rho_s, rs, al = einasto_density_from_local(float(res.x[0]), float(res.x[1]), float(res.x[2]))
+    _, vc_out, phi_out = _cdm_score(
+        r_grid, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, sig_phi, sig_z,
+        lambda r: einasto_mass(r, rho_s, rs, al),
+    )
+    return vc_out, phi_out, tuple(res.x)

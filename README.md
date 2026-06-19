@@ -6,8 +6,8 @@ Reproducibility package for the paper:
 > Monjo & Banik (2026, submitted)
 
 This package contains the full analysis pipeline and pre-computed outputs
-for testing 12 gravity model variants (from 7 frameworks) against Gaia DR3
-rotation-curve and vertical-potential data from Wang+2026 and Lian+2022.
+for testing 11 gravity prescriptions (plus the baryonic Newtonian baseline)
+against Gaia DR3 rotation-curve and vertical-potential data from Wang+2026 and Lian+2022.
 
 ---
 
@@ -102,7 +102,7 @@ The four step scripts reproduce everything from the raw ingredients:
 # Step 1: Generate 100 MC100 baryonic draws
 python scripts/step1_build_baryonic_mc100.py --full
 
-# Step 2: Fit all 11 gravity models
+# Step 2: Fit all 12 models (11 gravity prescriptions + baryonic reference)
 python scripts/step2_fit_all_models.py --full
 
 # Step 3: Chi² summary + Fig. 2
@@ -137,8 +137,8 @@ release/
 │
 ├── outputs/                Pre-computed results (fast-mode)
 │   ├── mc100_baryonic_{radial,vertical}.csv    100 baryonic draws
-│   ├── model_{key}_{radial,vertical}.csv       22 files (11 models × 2 grids)
-│   ├── mc100_chi2_all_models.csv               1100 chi² rows
+│   ├── model_{key}_{radial,vertical}.csv       24 files (12 models × 2 grids)
+│   ├── mc100_chi2_all_models.csv               1200 chi² rows
 │   ├── fig2_observational_data.csv             Observational data catalog
 │   └── hmg_competitive_analysis.csv            HMG per-draw comparison
 │
@@ -148,7 +148,7 @@ release/
 │   ├── observations.py     Load Wang+2026 data from CSV
 │   ├── solver.py           Cylindrical Poisson solver (CylGrid)
 │   ├── baryonic.py         Parametric density + MC100 qcopula
-│   ├── models.py           All 11 gravity model equations
+│   ├── models.py           All 12 model equations (11 gravity + baryonic)
 │   ├── chi2.py             Chi-squared and reduced chi-squared
 │   └── figures.py          Fig. 2 renderer + Table 2 printer
 │
@@ -242,13 +242,13 @@ total mass variation.  Seed: 20260607.
 | `baryonic` | Baryonic Newtonian | 0 | Reference: disc+gas+bulge only |
 | `qumond_simple` | QUMOND simple | 0 | ν = 0.5 + √(0.25 + 1/x) |
 | `qumond_standard` | QUMOND standard | 0 | ν = √(0.5 + √(0.25 + 1/x²)) |
-| `qumond_mls` | QUMOND MLS/RAR | 0 | ν = 1/(1 − exp(−√x)); old stochastic draws |
-| `veg_original` | VEG original | 0 | ν = 1 + √(a_EG/g_N), fixed a_EG=cH₀/6 |
-| `emergent_gravity` | VEG free a_EG | 1 | ν = 1 + √(a_EG/g_N), a_EG free |
-| `stvg` | STVG | 2 | Yukawa extra force, α, μ free |
+| `qumond_mls` | QUMOND MLS/RAR | 0 | ν = 1/(1 − exp(−√x)) |
+| `veg_fixed` | VEG original | 0 | ν = 1 + √(a_EG/g_N), fixed a_EG=cH₀/6 |
+| `veg_free` | VEG free a_EG | 1 | ν = 1 + √(a_EG/g_N), a_EG free |
+| `stvg` | STVG | 2 | Yukawa extra force, α and μ free |
 | `cdm_nfw` | CDM NFW | 2 | NFW halo, local DM density fit |
-| `cdm_einasto` | CDM Einasto | 3 | Einasto halo, α, ρ_s, r_s free |
-| `hmg_k1` | HMG (This Work) | 1 | f_R = √(1+β·extra/g_N), anisotropic |
+| `cdm_einasto` | CDM Einasto | 2 | Einasto halo, ρ_s and r_s free |
+| `hmg_k1` | HMG (This Work) | 1 | Neighbourhood scale s fitted |
 | `fr_screened` | f(R) screened | 2 | ν = 1 + δ·exp(−x/xc) |
 | `refracted_gravity` | Refracted Gravity | 2 | ε(x) screening function |
 
@@ -275,4 +275,4 @@ If you use this package, please cite:
 
 ## Licence
 
-MIT.  See LICENCE file.
+MIT.  See LICENSE file.
