@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "vgrav: Vertical gravitational potential of the Milky Way as a multi-model benchmark"
+version: 1.0.0
+authors:
+  - family-names: Monjo
+    given-names: Robert
+    orcid: "https://orcid.org/0000-0003-3100-2394"
+    affiliation: "CUNEF University; Universidad de Chile"
+license: MIT
+repository-code: "https://github.com/robertmonjo/vertical_gravity_hmg"
+keywords:
+  - modified gravity
+  - Milky Way
+  - rotation curve
+  - vertical potential
+  - HMG
+  - MOND
+  - dark matter
+  - reproducibility
+abstract: >
+  Reproducibility package for 'Vertical gravitational potential of the Milky Way
+  as a multi-model benchmark' (Wang et al. 2026). Tests 11 gravity models against
+  Wang+2026 observational data using the vgrav Python library.

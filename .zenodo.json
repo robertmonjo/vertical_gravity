@@ -1,0 +1,30 @@
+{
+  "title": "vgrav: Vertical gravitational potential of the Milky Way as a multi-model benchmark",
+  "upload_type": "software",
+  "description": "Reproducibility package for 'Vertical gravitational potential of the Milky Way as a multi-model benchmark' (Wang et al. 2026). Tests 11 gravity models (CDM NFW/Einasto, QUMOND, STVG, f(R) screened, Refracted Gravity, Emergent Gravity, HMG anisotropic) against Wang+2026 rotation-curve and vertical-potential data. Includes the vgrav Python library, pre-computed outputs, and step-by-step reproduction scripts.",
+  "creators": [
+    {
+      "name": "Monjo, Robert",
+      "orcid": "0000-0003-3100-2394",
+      "affiliation": "CUNEF University; Universidad de Chile"
+    }
+  ],
+  "license": "MIT",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/robertmonjo/hmg",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ],
+  "keywords": [
+    "modified gravity",
+    "Milky Way",
+    "rotation curve",
+    "vertical potential",
+    "HMG",
+    "MOND",
+    "dark matter",
+    "reproducibility"
+  ]
+}
