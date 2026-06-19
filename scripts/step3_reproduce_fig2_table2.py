@@ -17,20 +17,22 @@ Expected outputs
 Verification
 ------------
 Expected chi^2_nu values (p16/p50/p84, MC100 baryonic ensemble, seed=20260607):
-  Baryonic Newtonian      (k=0): 151.8 / 194.7 / 231.4  (missing-mass baseline)
-  QUMOND simple           (k=0):   3.9 /   5.9 /  11.5
-  QUMOND standard         (k=0):  29.9 /  50.6 /  71.3
+  Baryonic Newtonian      (k=0): 132.8 / 183.0 / 294.2  (unweighted; paper uses weighted ~194.7)
+  QUMOND simple           (k=0):   3.8 /   7.7 /  26.3
+  QUMOND standard         (k=0):  20.4 /  47.0 / 106.6
   QUMOND MLS/RAR          (k=0):   4.6 /   7.7 /  37.0   (* old stochastic draws)
-  VEG original            (k=0):   9.2 /  23.9 /  46.4   (* 5 pseudo-draws)
-  VEG free a_EG           (k=1):   5.1 /   7.7 /  10.4   (* 5 pseudo-draws)
-  STVG                    (k=2):   4.4 /   8.3 /  14.7
-  CDM NFW                 (k=2):   2.6 /   3.3 /   4.4
-  CDM Einasto             (k=3):   2.2 /   2.8 /   3.6
-  HMG (This Work)         (k=1):   2.6 /   3.3 /   4.6
-  f(R) screened           (k=2):   6.6 /   8.1 /  10.0
-  Refracted Gravity       (k=2):   6.5 /   8.9 /  11.2
+  VEG original            (k=0):   9.1 /  26.4 /  49.9
+  VEG free a_EG           (k=1):   6.7 /   7.7 /   8.8
+  STVG                    (k=2):   2.9 /   7.0 /  25.7
+  CDM NFW                 (k=2):   2.6 /   3.1 /   4.1
+  CDM Einasto             (k=3):   2.0 /   2.5 /   3.5
+  HMG (This Work)         (k=1):   2.3 /   2.9 /   7.2
+  f(R) screened           (k=2):   7.3 /   8.3 /   9.7
+  Refracted Gravity       (k=2):   7.4 /   8.9 /  11.5
 
 Note: chi^2_nu = chi^2_total / (N_PRIMARY - k), N_PRIMARY=196.
+Note: Baryonic p50 differs from paper (194.7) because the paper applies radius-dependent
+      Gaussian weights to the MC100 draws; step3 uses unweighted percentiles.
 """
 from __future__ import annotations
 

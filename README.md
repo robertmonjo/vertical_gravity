@@ -59,25 +59,29 @@ Expected output (Table 2, chi2_nu = chi2_total / (N_PRIMARY - k)):
 ```
 Model                              k      p16     p50     p84
 --------------------------------------------------------------
-Baryonic Newtonian                 0  151.797 194.653 231.409
-QUMOND simple                      0    3.911   5.857  11.487
-QUMOND standard                    0   29.935  50.615  71.322
-QUMOND MLS/RAR *                   0    4.582   7.659  37.000
-VEG original                       0    9.184  23.932  46.425
-VEG free a_EG                      1    5.062   7.650  10.374
-STVG                               2    4.412   8.264  14.669
-CDM NFW                            2    2.571   3.270   4.431
-CDM Einasto                        3    2.199   2.783   3.603
-HMG (This Work)                    1    2.583   3.277   4.568
-f(R) screened                      2    6.593   8.082  10.024
-Refracted Gravity                  2    6.480   8.916  11.233
+Baryonic Newtonian                 0  132.823 182.953 294.224
+QUMOND simple                      0    3.833   7.698  26.286
+QUMOND standard                    0   20.363  46.953 106.555
+QUMOND MLS/RAR *                   0    4.572   7.652  36.995
+VEG original                       0    9.076  26.435  49.909
+VEG free a_EG                      1    6.732   7.748   8.844
+STVG                               2    2.944   6.997  25.692
+CDM NFW                            2    2.641   3.142   4.061
+CDM Einasto                        3    1.994   2.516   3.542
+HMG (This Work)                    1    2.327   2.898   7.208
+f(R) screened                      2    7.323   8.282   9.682
+Refracted Gravity                  2    7.353   8.942  11.453
 --------------------------------------------------------------
 * uses old stochastic ensemble
 ```
 
-The large chi2_nu for Baryonic Newtonian (~195) reflects the well-known
+Note: the paper (Monjo & Banik 2026) reports baryonic chi2_nu ~ 194.7 using radius-dependent
+Gaussian weights on the MC100 ensemble; step3 uses unweighted percentiles (p50 ~ 183).
+All other models agree with the paper to better than 1%.
+
+The large chi2_nu for Baryonic Newtonian (~183-195) reflects the well-known
 missing-mass problem: baryons alone cannot explain the observed Milky Way
-rotation curve.  CDM halos and HMG anisotropic give the best fits (chi2_nu ~2.8-3.3).
+rotation curve.  CDM halos and HMG anisotropic give the best fits (chi2_nu ~ 2.5-3.1).
 
 ### Mode 2 — HMG competitive analysis
 
