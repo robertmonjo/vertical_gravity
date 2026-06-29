@@ -50,15 +50,17 @@ def _load_chi2_summary(chi2_csv: Path) -> tuple[dict, dict]:
 
 
 def _load_s_detail(path: Path) -> dict[int, float]:
-    """Load per-draw s values from fig2c_hmg_common_s_mc100_detail.csv."""
+    """Load per-draw HMG s values from a release2 detail/diagnostic CSV."""
     s_map: dict[int, float] = {}
     if not path.exists():
         return s_map
     with open(path, newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             try:
-                # scenario column = "fig2b_NN"
-                did = int(row["scenario"].split("_")[-1])
+                if row.get("gamma_cen") and row["gamma_cen"] not in {"0.5pi", "pi/2"}:
+                    continue
+                label = row.get("draw_label") or row.get("scenario") or row.get("label") or ""
+                did = int(label.split("_")[-1])
                 s_map[did] = float(row["s"])
             except (KeyError, ValueError):
                 pass
@@ -76,8 +78,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--s-detail", default=None,
-                        help="Path to fig2c_hmg_common_s_mc100_detail.csv "
-                             "(default: outputs/fig2c_hmg_common_s_mc100_detail.csv)")
+                        help="Path to an HMG s-detail CSV "
+                             "(default: outputs/diagnostic_hmg_gamma_compare.csv)")
     args = parser.parse_args()
 
     print("Step 4 — HMG competitive-realization analysis")
@@ -92,7 +94,7 @@ def main() -> None:
         print("  ERROR: cdm_einasto or hmg_k1 not found in chi2 summary.")
         return
 
-    s_detail_path = Path(args.s_detail) if args.s_detail else OUT / "fig2c_hmg_common_s_mc100_detail.csv"
+    s_detail_path = Path(args.s_detail) if args.s_detail else OUT / "diagnostic_hmg_gamma_compare.csv"
     s_map = _load_s_detail(s_detail_path)
     if s_map:
         print(f"  Loaded s values for {len(s_map)} draws from {s_detail_path.name}")
@@ -116,7 +118,7 @@ def main() -> None:
         for i, d in enumerate(draw_ids):
             w.writerow([
                 d,
-                f"b{d}",
+                f"draw_{d:03d}",
                 f"{s_arr[i]:.4f}" if not np.isnan(s_arr[i]) else "",
                 f"{ein_chi2[d]:.4f}",
                 f"{hmg_chi2[d]:.4f}",

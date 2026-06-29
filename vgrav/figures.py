@@ -31,21 +31,22 @@ from scipy.ndimage import gaussian_filter1d
 # ── Model display config ───────────────────────────────────────────────────────
 # key → (display_name, color, linestyle, linewidth)
 _MODEL_STYLES: dict[str, tuple] = {
-    "baryonic":           ("Baryonic (Newtonian)",    "#6baed6", "--", 1.5),
-    "qumond_standard":    ("QUMOND standard",          "#28cae0", "-",  1.000),
-    "qumond_simple":      ("QUMOND simple",            "#285ee0", "-",  1.288),
-    "emergent_gravity":   (r"VEG (free $a_{\rm EG}$)",  "#5d28e0", "-",  1.575),
-    "refracted_gravity":  ("ReG",                       "#c928e0", "-",  1.862),
-    "fr_screened":        ("f(R) screened",             "#e0288b", "-",  2.150),
-    "stvg":               ("STVG",                      "#e03028", "-",  2.438),
-    "cdm_nfw":            ("CDM NFW",                   "#e09c28", "-",  2.725),
-    "cdm_einasto":        ("CDM Einasto",               "#b8e028", "-",  3.012),
-    "hmg_k1":             ("HMG (This Work)",           "#4de028", "-",  3.300),
-    "qumond_mls":         ("QUMOND MLS/RAR",           "#888888", "--", 1.5),
+    "baryonic":           ("Baryonic (Newtonian)",      "#6baed6", "--", 1.5),
+    "qumond_standard":    ("QUMOND standard",            "#28cae0", "-",  1.000),
+    "qumond_simple":      ("QUMOND simple",              "#285ee0", "-",  1.288),
+    "qumond_mls":         ("QUMOND MLS/RAR",             "#2800e0", "-",  1.500),
+    "veg_fixed":          (r"VEG (fixed $a_{\rm EG}$)",  "#5d28e0", "-",  1.575),
+    "veg_free":           (r"VEG (free $a_{\rm EG}$)",   "#7b28e0", "-",  1.431),
+    "refracted_gravity":  ("ReG",                         "#c928e0", "-",  1.862),
+    "fr_screened":        ("f(R) screened",               "#e0288b", "-",  2.150),
+    "stvg":               ("STVG",                        "#e03028", "-",  2.438),
+    "cdm_nfw":            ("CDM NFW",                     "#e09c28", "-",  2.725),
+    "cdm_einasto":        ("CDM Einasto",                 "#b8e028", "-",  3.012),
+    "hmg_k1":             ("HMG (This Work)",             "#4de028", "-",  3.300),
 }
 _BARY_COLOR = "#6baed6"
 
-# Baryonic family colours — matches make_fig2_consolidated.py
+# Baryonic reconstruction colours
 _FAMILY_COLORS: dict[str, str] = {
     "McGaugh2018_Imig2025": "#d62728",
     "Wang2026_Lian2022":    "#ff7f0e",
@@ -130,6 +131,7 @@ def plot_fig2(
     output_path: Optional[Path] = None,
     dpi: int = 220,
     model_keys: Optional[list[str]] = None,
+    hmg_1fam_outputs_dir: Optional[Path] = None,
 ) -> plt.Figure:
     """Reproduce Fig. 2: rotation curve + 9 vertical potential panels.
 
@@ -176,7 +178,7 @@ def plot_fig2(
             _tband_path = _p
     bband_R: Optional[np.ndarray] = None
     bband_p5 = bband_p16 = bband_p84 = bband_p95 = None
-    bband_families: dict[str, np.ndarray] = {}
+    bband_reconstructions: dict[str, np.ndarray] = {}
     if _tband_path.exists():
         with open(_tband_path, newline="", encoding="utf-8") as fh:
             _tb = list(csv.DictReader(fh))
@@ -199,7 +201,7 @@ def plot_fig2(
             _bb = list(csv.DictReader(fh))
         for _fam in _FAMILY_COLORS:
             if f"center_{_fam}" in _bb[0]:
-                bband_families[_fam] = np.array([float(r[f"center_{_fam}"]) for r in _bb])
+                bband_reconstructions[_fam] = np.array([float(r[f"center_{_fam}"]) for r in _bb])
 
     # Baryonic draws — only needed for vertical panels
     bary_vert_p = outputs_dir / "mc100_baryonic_vertical.csv"
@@ -237,8 +239,8 @@ def plot_fig2(
             label=r"Baryonic band $p_{16}$–$p_{84}$",
         )
         for _fam, _fcol in _FAMILY_COLORS.items():
-            if _fam in bband_families:
-                ax_top.plot(bband_R, bband_families[_fam],
+            if _fam in bband_reconstructions:
+                ax_top.plot(bband_R, bband_reconstructions[_fam],
                             color=_fcol, lw=1.4, linestyle=":", alpha=0.65, zorder=0.08)
 
     # Load chi²_ν medians from mc100_chi2_all_models.csv if available
@@ -251,10 +253,26 @@ def plot_fig2(
                 _chi2_by_key.setdefault(_row["model_key"], []).append(float(_row["chi2_nu"]))
         _chi2_med = {k: float(np.median(v)) for k, v in _chi2_by_key.items()}
 
+    # VEG fixed is in Table 2 but not shown in the figure
+    _FIG2_SKIP = {"veg_fixed"}
+
+    # Load HMG 1-fam overlay (release_alt / self-consistent Imig) if provided
+    hmg_1fam_data: Optional[dict] = None
+    if hmg_1fam_outputs_dir is not None:
+        _h1r = Path(hmg_1fam_outputs_dir) / "model_hmg_k1_radial.csv"
+        _h1v = Path(hmg_1fam_outputs_dir) / "model_hmg_k1_vertical.csv"
+        if _h1r.exists() and _h1v.exists():
+            _r1c, _r1d, _r1chi2 = _read_draw_csv(_h1r)
+            _v1c, _v1d, _v1chi2 = _read_draw_csv(_h1v)
+            hmg_1fam_data = {
+                "r_coords": _r1c, "r_draws": _r1d,
+                "v_coords": _v1c, "v_draws": _v1d,
+            }
+
     model_handles = []
     _model_curves: dict = {}
     for key, dat in available.items():
-        if key == "qumond_mls":
+        if key in _FIG2_SKIP:
             continue
         label_base, color, ls, lw = _MODEL_STYLES[key]
         med = gaussian_filter1d(_pct(dat["r_draws"], 50), sigma=4)
@@ -269,7 +287,31 @@ def plot_fig2(
             model_handles.append(h)
             _model_curves[key] = (dat["r_coords"], med, p16, p84, color, ls, lw)
 
-    # Observational data — per-survey styled (canonical group_style)
+    # HMG 1-fam overlay (self-consistent Imig, dashed green)
+    if hmg_1fam_data is not None:
+        _h1_med = gaussian_filter1d(_pct(hmg_1fam_data["r_draws"], 50), sigma=4)
+        _h1_p16 = gaussian_filter1d(_pct(hmg_1fam_data["r_draws"], 16), sigma=4)
+        _h1_p84 = gaussian_filter1d(_pct(hmg_1fam_data["r_draws"], 84), sigma=4)
+        _h1_color = "#1a7a10"  # darker green to contrast with nbar4 HMG solid curve
+        ax_top.fill_between(hmg_1fam_data["r_coords"], _h1_p16, _h1_p84,
+                            color=_h1_color, alpha=0.08, lw=0)
+        _h1_chi2_sfx = ""
+        if "hmg_k1" in _chi2_med:
+            _h1_chi2_csv = Path(hmg_1fam_outputs_dir) / "mc100_chi2_all_models.csv"
+            if _h1_chi2_csv.exists():
+                _h1_vals = []
+                with open(_h1_chi2_csv, newline="", encoding="utf-8") as _fh:
+                    for _row in csv.DictReader(_fh):
+                        if _row["model_key"] == "hmg_k1":
+                            _h1_vals.append(float(_row["chi2_nu"]))
+                if _h1_vals:
+                    _h1_chi2_sfx = f" ($\\chi^2_{{\\nu}}={float(np.median(_h1_vals)):.2f}$)"
+        h1, = ax_top.plot(hmg_1fam_data["r_coords"], _h1_med,
+                          color=_h1_color, ls="-", lw=1.6,
+                          label="HMG+Imig (This Work)" + _h1_chi2_sfx, zorder=4, alpha=0.92)
+        model_handles.append(h1)
+
+    # Observational data — per-survey styled (default group_style)
     _group_style = [
         ("Feng2026",                     "h", "#f781bf", "Feng et al. 2026 Cepheids",      "independent", False),
         ("McClureDickey2016",            "o", "#009e73", "McClure-Dickey 2016 Q1 H I",     "independent", False),
@@ -417,9 +459,10 @@ def plot_fig2(
                 axp.fill_between(zd, b16d, b84d, color=_BARY_COLOR, alpha=0.18, lw=0)
                 axp.plot(zd, b50d, color=_BARY_COLOR, lw=2.8, alpha=0.35)
 
-        # Model curves (skip baryonic — already shown as band; skip qumond_mls — not in figure)
+        # Model curves (skip baryonic — shown as band; skip veg_fixed — Table 2 only)
+        _vert_skip = {"baryonic"} | _FIG2_SKIP
         for key, dat in available.items():
-            if key in ("baryonic", "qumond_mls"):
+            if key in _vert_skip:
                 continue
             label, color, ls, lw = _MODEL_STYLES[key]
             mask_m = np.abs(dat["v_coords"][:, 0] - R) < 0.05
@@ -440,6 +483,21 @@ def plot_fig2(
                 axp.fill_between(zd, _interp(phi16), _interp(phi84),
                                  color=color, alpha=0.08, lw=0)
                 axp.plot(zd, _interp(phi50), color=color, ls=ls, lw=lw, alpha=0.88)
+
+        # HMG 1-fam vertical overlay
+        if hmg_1fam_data is not None:
+            mask_h1 = np.abs(hmg_1fam_data["v_coords"][:, 0] - R) < 0.05
+            if mask_h1.any():
+                zh1 = hmg_1fam_data["v_coords"][mask_h1, 1]
+                order_h1 = np.argsort(zh1)
+                zh1_s = zh1[order_h1]
+                phi50_h1 = _pct(hmg_1fam_data["v_draws"][mask_h1], 50)[order_h1]
+                if len(zh1_s) >= 2:
+                    zd = np.linspace(0.0, 1.1, 80)
+                    phi_h1_interp = PchipInterpolator(
+                        np.r_[0.0, zh1_s], np.r_[0.0, phi50_h1], extrapolate=True
+                    )(zd)
+                    axp.plot(zd, phi_h1_interp, color="#1a7a10", ls="-", lw=1.6, alpha=0.92)
 
         axp.set_title(rf"$R={R:.2f}$ kpc", pad=2, fontsize=11.5)
         axp.set_xlim(0, 1.12)
@@ -488,7 +546,7 @@ def print_table2(outputs_dir: Path, chi2_csv: Optional[Path] = None) -> None:
     order = [
         "baryonic", "qumond_simple", "qumond_standard", "qumond_mls",
         "stvg", "cdm_nfw", "cdm_einasto",
-        "hmg_k1", "fr_screened", "refracted_gravity", "emergent_gravity",
+        "hmg_k1", "fr_screened", "refracted_gravity", "veg_fixed", "veg_free",
     ]
     for key in order:
         if key not in model_chi2:
@@ -554,7 +612,7 @@ def plot_fig1(
                 target[name]["xs"].append(x)
                 target[name]["ys"].append(y)
 
-    # ── Figure layout (matches canonical exactly) ─────────────────────────
+    # ── Figure layout (matches default exactly) ─────────────────────────
     _AH  = 4.00
     _AW  = _AH * 52 / 48
     _CBW = 0.20

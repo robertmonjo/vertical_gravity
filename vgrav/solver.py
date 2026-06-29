@@ -5,18 +5,28 @@ conditions.  The operator is ∂²/∂R² + (1/R)∂/∂R + ∂²/∂z².
 
 Typical usage
 -------------
->>> grid = make_grid(r_min=0.1, r_max=40.0, z_max=20.0, nR=121, nz=121)
+>>> grid = make_grid(r_min=0.0, r_max=40.0, z_max=20.0, nR=121, nz=121)
 >>> phi  = solve_axisymmetric(grid, 4*pi*G*rho, boundary, mu=0.0)
 >>> gR, gz = gradients(grid, phi)
 >>> phi_obs = interp2(grid, phi, R_obs, z_obs)
+
+High-level helpers
+------------------
+>>> boundary = monopole_boundary(grid, mass)
+>>> mass, phi = solve_newtonian(grid, rho)
+>>> vc = radial_speed(grid, phi, radii)
+>>> phi_diff = phi_difference(grid, phi, rv, zv)
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import spsolve
+
+from vgrav._constants import G
 
 
 @dataclass
@@ -38,7 +48,7 @@ class CylGrid:
 
 
 def make_grid(
-    r_min: float = 0.1,
+    r_min: float = 0.0,
     r_max: float = 40.0,
     z_max: float = 20.0,
     nR: int = 121,
@@ -162,3 +172,100 @@ def interp2(
             + t * u * values[i + 1, j + 1]
         )
     return out
+
+
+# ── High-level Newtonian helpers ──────────────────────────────────────────────
+
+def monopole_boundary(grid: CylGrid, mass: float) -> np.ndarray:
+    """Dirichlet boundary values φ = −GM/r (Newtonian monopole)."""
+    RR, ZZ = np.meshgrid(grid.R, grid.z, indexing="ij")
+    rr = np.sqrt(RR * RR + ZZ * ZZ)
+    return -G * mass / np.maximum(rr, 1e-6)
+
+
+def solve_newtonian(grid: CylGrid, rho: np.ndarray) -> tuple[float, np.ndarray]:
+    """Solve the Newtonian Poisson equation ∇²φ = 4πG ρ.
+
+    Parameters
+    ----------
+    grid : CylGrid
+    rho  : density [Msun/kpc^3], shape grid.shape
+
+    Returns
+    -------
+    mass : total enclosed mass [Msun]
+    phi  : gravitational potential [kpc^2/(km/s)^2 ≡ (km/s)^2], shape grid.shape
+    """
+    mass = float(np.sum(rho * (2.0 * math.pi * grid.R[:, None] * grid.dR * grid.dz)))
+    boundary = monopole_boundary(grid, mass)
+    phi = solve_axisymmetric(grid, 4.0 * math.pi * G * rho, boundary)
+    return mass, phi
+
+
+def radial_speed(grid: CylGrid, phi: np.ndarray, radii: np.ndarray) -> np.ndarray:
+    """Circular speed v_c(R) = sqrt(R * ∂φ/∂R) at z=0.
+
+    Parameters
+    ----------
+    grid   : CylGrid
+    phi    : potential on grid, shape grid.shape
+    radii  : evaluation radii [kpc]
+
+    Returns
+    -------
+    vc : circular speed [km/s]
+    """
+    dphi_dR, _ = gradients(grid, phi)
+    z0 = np.zeros_like(np.asarray(radii, dtype=float))
+    dphidR_mid = interp2(grid, dphi_dR, np.asarray(radii, dtype=float), z0)
+    return np.sqrt(np.maximum(np.asarray(radii, dtype=float) * dphidR_mid, 0.0))
+
+
+def radial_v2(grid: CylGrid, phi: np.ndarray, radii: np.ndarray) -> np.ndarray:
+    """Return R * ∂φ/∂R at z=0 (= v_c²) without the sqrt."""
+    dphi_dR, _ = gradients(grid, phi)
+    z0 = np.zeros_like(np.asarray(radii, dtype=float))
+    return np.asarray(radii, dtype=float) * interp2(grid, dphi_dR, np.asarray(radii, dtype=float), z0)
+
+
+def phi_difference(
+    grid: CylGrid,
+    phi: np.ndarray,
+    rv: np.ndarray,
+    zv: np.ndarray,
+) -> np.ndarray:
+    """Return φ(R,z) − φ(R,0) at observation points [(km/s)²].
+
+    Parameters
+    ----------
+    grid : CylGrid
+    phi  : potential on grid, shape grid.shape
+    rv   : R coordinates of obs points [kpc]
+    zv   : z coordinates of obs points [kpc]
+    """
+    rv = np.asarray(rv, dtype=float)
+    zv = np.asarray(zv, dtype=float)
+    return interp2(grid, phi, rv, zv) - interp2(grid, phi, rv, np.zeros_like(zv))
+
+
+def blend_outer(
+    radii: np.ndarray,
+    inner: np.ndarray,
+    outer: np.ndarray,
+    r_blend_start: float = 55.0,
+    r_solve_max: float = 60.0,
+) -> np.ndarray:
+    """Smoothly transition from inner (solver) to outer (monopole) solution.
+
+    Beyond r_solve_max the cylindrical Poisson solver is inaccurate because
+    the boundary condition dominates.  This blends between the two solutions
+    over [r_blend_start, r_solve_max] using a smooth cubic.
+    """
+    result = np.asarray(inner, dtype=float).copy()
+    outer_mask = radii >= r_solve_max
+    result[outer_mask] = np.asarray(outer, dtype=float)[outer_mask]
+    mid = (radii > r_blend_start) & (radii < r_solve_max)
+    t = (radii[mid] - r_blend_start) / (r_solve_max - r_blend_start)
+    smooth = 3.0 * t * t - 2.0 * t * t * t
+    result[mid] = (1.0 - smooth) * result[mid] + smooth * np.asarray(outer, dtype=float)[mid]
+    return result

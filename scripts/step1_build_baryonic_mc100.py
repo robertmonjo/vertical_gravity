@@ -9,9 +9,12 @@ Two execution modes:
   Full (--full) — regenerate from the hybrid baryonic band
     Generates 100 target velocity curves from the mass-constrained GP copula,
     then for each draw:
-      1. Scales the parametric baryonic density to match the target v_N(R).
-      2. Solves the cylindrical Poisson equation for phi_N(R,z).
-      3. Writes outputs/mc100_baryonic_radial.csv and _vertical.csv.
+      1. Scales the parametric baryonic density to match the target v_N(R) via
+         least-squares fit of the stellar scale factor s.
+      2. Solves the cylindrical Poisson equation ∇²φ = 4πGρ(R,z) for φ_N.
+      3. Evaluates the rotation curve and vertical potential difference at the
+         observed (R, z) points.
+      4. Writes outputs/mc100_baryonic_radial.csv and _vertical.csv.
     Requires: data/baryon_band.csv (bundled) + scipy sparse solver.
     Runtime: ~2 hours on a modern desktop (100 Poisson solves).
 
@@ -26,7 +29,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import math
 import sys
 from pathlib import Path
 
@@ -37,10 +39,14 @@ sys.path.insert(0, str(ROOT))
 
 from vgrav.observations import load_observations, radial_fit_arrays, vertical_arrays
 from vgrav.baryonic import (
-    build_mc100_draws, load_baryon_band, baryon_density,
-    make_radial_grid, make_vertical_grid, build_component_grid,
+    build_mc100_draws,
+    RANDOM_SEED,
+    make_radial_grid,
+    imig_precompute,
+    calibrate_imig_draw,
 )
-from vgrav.chi2 import chi2_radial, chi2_vertical, chi2_nu, N_PRIMARY
+from vgrav.chi2 import chi2_radial, chi2_vertical, N_PRIMARY
+from vgrav.solver import make_grid, phi_difference, radial_speed, blend_outer
 from vgrav._constants import G
 
 OUT = ROOT / "outputs"
@@ -71,41 +77,7 @@ def _verify_fast() -> None:
     print("\nVerification complete.  Run step3 to produce Table 2 and Fig. 2.")
 
 
-# ── Full mode ─────────────────────────────────────────────────────────────────
-
-def _accel_R_midplane_approx(
-    r_grid: np.ndarray,
-    vc_target: np.ndarray,
-) -> np.ndarray:
-    """Return g_N(R) = v_target^2 / R from the target baryonic curve."""
-    return vc_target ** 2 / np.maximum(r_grid, 1e-8)
-
-
-def _phi_from_spherical_mass(
-    rv: np.ndarray,
-    zv: np.ndarray,
-    r_line: np.ndarray,
-    vc_n: np.ndarray,
-) -> np.ndarray:
-    """Approximate phi_N at obs points using the spherical mass approximation.
-
-    Integrates g_N(r) = v^2/r from r=R to r=sqrt(R^2+z^2).
-    This is an approximation valid for spherically dominated mass distributions.
-    For a full disc treatment use the cylindrical Poisson solver.
-    """
-    phi = np.zeros(len(rv))
-    for k, (R, z) in enumerate(zip(rv, zv)):
-        r0 = abs(float(R))
-        r1 = math.hypot(float(R), float(z))
-        if r1 <= r0 + 1e-8:
-            phi[k] = 0.0
-            continue
-        rr = np.linspace(r0, r1, 160)
-        vc_rr = np.interp(rr, r_line, vc_n)
-        g_rr = vc_rr ** 2 / np.maximum(rr, 1e-8)
-        phi[k] = float(np.trapezoid(g_rr, rr))
-    return phi
-
+# ── CSV writer ────────────────────────────────────────────────────────────────
 
 def _write_csv(
     path: Path,
@@ -130,20 +102,33 @@ def _write_csv(
                    [f"{v:.6g}" for v in chi2_vals])
 
 
-def _run_full() -> None:
-    print("Step 1 — Regenerating MC100 baryonic draws from scratch (full mode)")
-    rot, vert = load_observations()
-    rr, vv, ss = radial_fit_arrays(rot=rot)
+# ── Full mode ─────────────────────────────────────────────────────────────────
+
+def _run_full(n_draws_limit: int | None = None, band_path: Path | None = None) -> None:
+    label = f"first {n_draws_limit}" if n_draws_limit else "all"
+    print(f"Step 1 — Regenerating baryonic draws from scratch ({label} draws)")
+    _rot, vert = load_observations()
+    rr, vv, ss = radial_fit_arrays(
+        chi2_catalog_path=ROOT / "data" / "fig2_observational_catalog.csv"
+    )
     rv, zv, phi_obs, sig_phi, sig_z = vertical_arrays(vert=vert)
 
     print(f"  Observations: {len(rr)} radial + {len(rv)} vertical points")
     print("  Loading hybrid baryonic band...")
-    r_line, draws = build_mc100_draws()
+    r_line, all_draws = build_mc100_draws(band_path=band_path)
+    draws = all_draws[:n_draws_limit] if n_draws_limit else all_draws
     n_draws = len(draws)
-    print(f"  Generated {n_draws} qcopula target curves  (seed=20260607)")
+    print(f"  Processing {n_draws} MC target curves  (seed={RANDOM_SEED})")
 
     r_grid = make_radial_grid(r_obs=rr)
-    rz_grid = make_vertical_grid(rv, zv)
+
+    # Pre-compute cylindrical grid and Imig+2025 calibration basis (one-time).
+    # 13 Poisson solves: 1 for phi_fixed + 12 hat-basis potentials.
+    print("  Building cylindrical grid and computing Imig+2025 calibration basis "
+          "(13 Poisson solves — one-time cost)...", flush=True)
+    cyl_grid = make_grid(r_min=0.0, r_max=70.0, z_max=20.0, nR=281, nz=641)
+    precomp = imig_precompute(cyl_grid)
+    print("  Calibration basis ready.")
 
     rad_curves: list[np.ndarray] = []
     vert_curves: list[np.ndarray] = []
@@ -151,45 +136,81 @@ def _run_full() -> None:
     chi2_z_list: list[float] = []
 
     for i, (label, vc_target, _u) in enumerate(draws):
-        vc_on_grid = np.interp(r_grid, r_line, vc_target)
-        rad_curves.append(vc_on_grid)
-        chi2_r_list.append(chi2_radial(vc_target, r_line, rr, vv, ss))
+        # Imig+2025 radial calibration + consistent Newtonian potential for this draw.
+        _rho_N, total_mass, phi_N, _weights = calibrate_imig_draw(precomp, vc_target, r_line)
 
-        # Vertical: spherical-mass approximation for phi_N
-        phi_at_obs = _phi_from_spherical_mass(rv, zv, r_line, vc_target)
-        vert_curves.append(phi_at_obs)
-        chi2_z_list.append(chi2_vertical(phi_at_obs, rv, zv, rv, zv, phi_obs, sig_phi, sig_z))
+        # Rotation curve via cylindrical solver; monopole at outer boundary.
+        vc_N = radial_speed(cyl_grid, phi_N, r_grid)
+        outer_vc = np.sqrt(G * total_mass / np.maximum(r_grid, 1e-9))
+        vc_N = blend_outer(r_grid, vc_N, outer_vc)
+        rad_curves.append(vc_N)
+        chi2_r_list.append(chi2_radial(vc_N, r_grid, rr, vv, ss))
+
+        # Vertical potential difference φ(R,z) − φ(R,0) at observation points.
+        phi_diff = phi_difference(cyl_grid, phi_N, rv, zv)
+        vert_curves.append(phi_diff)
+        chi2_z_list.append(
+            chi2_vertical(phi_diff, rv, zv, rv, zv, phi_obs, sig_phi, sig_z)
+        )
 
         if (i + 1) % 10 == 0:
-            print(f"  {i+1}/{n_draws}  chi2_rad={chi2_r_list[-1]:.1f}  chi2_vert={chi2_z_list[-1]:.1f}")
+            print(f"  {i+1}/{n_draws}  "
+                  f"chi2_rad={chi2_r_list[-1]:.1f}  chi2_vert={chi2_z_list[-1]:.1f}")
 
     OUT.mkdir(exist_ok=True)
     out_rad = OUT / "mc100_baryonic_radial.csv"
     out_vert = OUT / "mc100_baryonic_vertical.csv"
 
     _write_csv(out_rad, r_grid, ["R_kpc"], rad_curves, "chi2_radial", chi2_r_list)
-    _write_csv(out_vert, list(rz_grid), ["R_kpc", "z_kpc"], vert_curves, "chi2_vertical", chi2_z_list)
+    _write_csv(out_vert, np.column_stack([rv, zv]), ["R_kpc", "z_kpc"], vert_curves, "chi2_vertical", chi2_z_list)
 
     chi2_tot = [chi2_r_list[i] + chi2_z_list[i] for i in range(n_draws)]
     print(f"\nWritten: {out_rad.name}  ({len(r_grid)+1} rows incl. chi2)")
-    print(f"Written: {out_vert.name}  ({len(rz_grid)+1} rows incl. chi2)")
+    print(f"Written: {out_vert.name}  ({len(rv)+1} rows incl. chi2)")
     print(f"chi2_total (k=0): p50 = {np.percentile(chi2_tot,50):.1f}")
     print(f"chi2_nu   (k=0): p50 = {np.percentile(chi2_tot,50)/N_PRIMARY:.3f}")
 
-    note = (
-        "\nNote: vertical predictions used the spherical-mass approximation.\n"
-        "For disc-accurate phi_N, replace _phi_from_spherical_mass() with\n"
-        "the cylindrical Poisson solver (see vgrav.solver)."
-    )
-    print(note)
-
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--full", action="store_true", help="Regenerate from scratch (slow)")
+    parser.add_argument("--n-draws", type=int, default=None, metavar="N",
+                        help="Generate only the first N draws (for quick validation)")
+    parser.add_argument(
+        "--nbar", type=int, default=None, choices=[1, 2, 3, 4], metavar="N",
+        help="Rebuild baryon_band.csv with N baryonic reconstructions before generating draws "
+             "(1=McGaugh, 2=+Wang, 3=+deSalas, 4=+McMillan). "
+             "Requires --full or --n-draws.",
+    )
+    parser.add_argument(
+        "--outdir", default=None, metavar="DIR",
+        help="Output directory for baryonic CSVs (default: outputs/).",
+    )
+    parser.add_argument(
+        "--baryon-band", default=None, metavar="PATH",
+        help="Path to baryon_band.csv to use instead of data/baryon_band.csv. "
+             "When given, skips the internal --nbar rebuild (band is pre-generated).",
+    )
     args = parser.parse_args()
-    if args.full:
-        _run_full()
+
+    global OUT
+    if args.outdir:
+        OUT = Path(args.outdir)
+
+    band_path = Path(args.baryon_band) if args.baryon_band else None
+
+    if args.nbar is not None and band_path is None:
+        if not (args.full or args.n_draws):
+            parser.error("--nbar requires --full or --n-draws")
+        import subprocess
+        rebuild = Path(__file__).parent / "rebuild_baryon_band.py"
+        print(f"Running rebuild_baryon_band.py --nbar {args.nbar} ...")
+        subprocess.run([sys.executable, str(rebuild), "--nbar", str(args.nbar)], check=True)
+
+    if args.full or args.n_draws:
+        _run_full(n_draws_limit=args.n_draws, band_path=band_path)
     else:
         _verify_fast()
 

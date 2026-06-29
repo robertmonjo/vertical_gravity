@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import numpy as np
 
-N_OBS_RAD: int = 152
+N_OBS_RAD: int = 152   # direct_rotation / used_in_fit=true rows in fig2_observational_catalog.csv
 N_OBS_VERT: int = 44
 N_PRIMARY: int = N_OBS_RAD + N_OBS_VERT  # 196
 
@@ -104,6 +104,31 @@ def chi2_vertical(
     kz = vertical_force_from_phi(phi_at_obs, rv_obs, zv_obs)
     sig_eff = np.sqrt(sig_phi ** 2 + (kz * sig_z) ** 2)
     return float(np.sum(((phi_at_obs - phi_obs) / sig_eff) ** 2))
+
+
+def weighted_quantile(
+    values: np.ndarray,
+    weights: np.ndarray,
+    quantiles,
+) -> np.ndarray:
+    """Weighted quantiles via sorted-CDF interpolation.
+
+    Parameters
+    ----------
+    values    : 1-D array of values
+    weights   : 1-D non-negative weights (need not sum to 1)
+    quantiles : scalar or sequence of percentile levels in [0, 100]
+
+    Returns
+    -------
+    np.ndarray of same length as quantiles
+    """
+    sorter = np.argsort(values)
+    sv = values[sorter]
+    sw = weights[sorter]
+    cdf = np.cumsum(sw)
+    cdf /= cdf[-1]
+    return np.interp(np.asarray(quantiles) / 100.0, cdf, sv)
 
 
 def chi2_nu(

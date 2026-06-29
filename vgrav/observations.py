@@ -67,33 +67,46 @@ def radial_fit_arrays(
     rot: Optional[list[dict]] = None,
     rot_path: Optional[Path] = None,
     chi2_catalog_path: Optional[Path] = None,
+    sigma_floor: float = 3.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return (R_kpc, vc_kms, sigma_total_kms) arrays for the chi^2 fitting subset.
+    """Return (R_kpc, vc_kms, sigma_kms) arrays for the chi^2 fitting subset.
 
-    The fitting subset excludes model-dependent outer-disc points flagged in
-    the chi^2 catalog (fig2_observational_data.csv).  Falls back to all
-    rotation-curve rows when no catalog is available.
+    When chi2_catalog_path is supplied (recommended), loads all 152
+    kind=direct_rotation / used_in_fit=true rows from the observational
+    catalog and uses their sigma_v_kms (floored at sigma_floor=3 km/s).
+    This matches the analysis in Monjo & Banik 2026.
+
+    Without chi2_catalog_path, falls back to the Wang+2026 34-row CSV
+    using sigma_total_kms (suitable for quick checks only).
 
     Returns
     -------
     rr : [kpc], vv : [km/s], ss : [km/s]
     """
-    if rot is None:
-        rot = load_rotation_curve(rot_path)
-
     if chi2_catalog_path is not None and Path(chi2_catalog_path).exists():
-        fit_radii: set[float] = set()
+        rr_list, vv_list, ss_list = [], [], []
         with open(chi2_catalog_path, newline="", encoding="utf-8") as fh:
             for row in csv.DictReader(fh):
-                if row.get("type", "") == "radial" and row.get("in_chi2_fit", "").lower() == "true":
-                    fit_radii.add(float(row["R_kpc"]))
-        selected = [r for r in rot if r["R_kpc"] in fit_radii]
-        if selected:
-            rot = selected
+                if (row.get("kind", "") == "direct_rotation"
+                        and row.get("used_in_fit", "").lower() == "true"
+                        and row.get("R_kpc", "").strip()
+                        and row.get("vc_kms", "").strip()
+                        and row.get("sigma_v_kms", "").strip()):
+                    rr_list.append(float(row["R_kpc"]))
+                    vv_list.append(float(row["vc_kms"]))
+                    ss_list.append(max(float(row["sigma_v_kms"]), sigma_floor))
+        if rr_list:
+            order = np.argsort(rr_list)
+            return (np.array(rr_list)[order],
+                    np.array(vv_list)[order],
+                    np.array(ss_list)[order])
 
+    # Fallback: Wang+2026 34-row CSV
+    if rot is None:
+        rot = load_rotation_curve(rot_path)
     rr = np.array([r["R_kpc"] for r in rot])
     vv = np.array([r["vc_kms"] for r in rot])
-    ss = np.array([r["sigma_total_kms"] for r in rot])
+    ss = np.maximum(np.array([r["sigma_total_kms"] for r in rot]), sigma_floor)
     return rr, vv, ss
 
 

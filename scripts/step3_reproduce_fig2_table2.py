@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import shutil
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -50,7 +51,7 @@ sys.path.insert(0, str(ROOT))
 from vgrav.chi2 import N_PRIMARY
 from vgrav.figures import plot_fig2
 
-OUT = ROOT / "outputs"
+OUT = ROOT / "outputs" / "nbar4"  # four-source result (MI+LW+B2+MM), used in Fig. 2
 FIGS = ROOT / "figs"
 
 # Model catalogue — must match the CSV naming from step2
@@ -60,8 +61,8 @@ MODEL_SPECS = [
     ("qumond_simple",     "QUMOND simple",                             0, "qcopula"),
     ("qumond_standard",   "QUMOND standard",                           0, "qcopula"),
     ("qumond_mls",        "QUMOND MLS/RAR",                            0, "old_stochastic"),
-    ("veg_original",      "VEG original",                              0, "precomputed"),
-    ("emergent_gravity",  "VEG free a_EG",                             1, "precomputed"),
+    ("veg_fixed",         "VEG original",                              0, "precomputed"),
+    ("veg_free",           "VEG free a_EG",                             1, "precomputed"),
     ("stvg",              "STVG",                                      2, "qcopula"),
     ("cdm_nfw",           "CDM NFW",                                   2, "qcopula"),
     ("cdm_einasto",       "CDM Einasto",                               3, "qcopula"),
@@ -180,10 +181,25 @@ def main() -> None:
 
     if not args.no_figure:
         FIGS.mkdir(exist_ok=True)
-        obs_path = outputs_dir / "fig2_observational_data.csv"
-        fig_path = FIGS / "fig2_reproduced.png"
+        # plot_fig2 looks for baryon_band.csv at outputs_dir.parent/data/.
+        # For nbar subdirs that resolves to outputs/data/, not release_final/data/.
+        _plot_data = outputs_dir.parent / "data"
+        _plot_data.mkdir(exist_ok=True)
+        for _fname in ("baryon_band.csv", "baryonic_target_band.csv"):
+            # Prefer the nbar-specific band (e.g. baryon_band_nbar4.csv in outputs/nbar4/)
+            # over data/baryon_band.csv, which may reflect a different nbar run.
+            _nbar_src = outputs_dir / f"baryon_band_{outputs_dir.name}.csv"
+            if _fname == "baryon_band.csv" and _nbar_src.exists():
+                shutil.copy(_nbar_src, _plot_data / _fname)
+            else:
+                _src = ROOT / "data" / _fname
+                if _src.exists() and not (_plot_data / _fname).exists():
+                    shutil.copy(_src, _plot_data / _fname)
+        obs_path = ROOT / "data" / "fig2_observational_data.csv"
+        fig_path = FIGS / f"fig2_{outputs_dir.name}.png"
         try:
-            fig = plot_fig2(outputs_dir, obs_path=obs_path, output_path=fig_path, dpi=220)
+            fig = plot_fig2(outputs_dir, obs_path=obs_path, output_path=fig_path, dpi=220,
+                            hmg_1fam_outputs_dir=ROOT / "outputs" / "nbar1")
             import matplotlib.pyplot as plt
             plt.close(fig)
         except Exception as e:
@@ -194,3 +210,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
