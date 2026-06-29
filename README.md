@@ -1,23 +1,24 @@
-# vgrav release_final
+# vgrav — Milky Way vertical gravity benchmark
 
-Reproducibility workspace for the vertical-gravity Milky Way benchmark in
-Monjo & Banik (2026, manuscript in preparation).
+Reproducibility package for:
 
-The governing rule is simple: the default release path must reproduce the
-analysis described in `../main.tex`.  If a calculation differs from the
-manuscript, it is diagnostic unless the difference is explicitly justified as
-scientifically more rigorous.
+> Monjo & Banik (2026). *Vertical gravitational potential of the Milky Way
+> as a multi-model benchmark.* Manuscript in preparation.
 
-See:
+Tests 11 model variants from 7 gravity frameworks (QUMOND, STVG,
+CDM NFW/Einasto, f(R) screened, Refracted Gravity, VEG, and HMG)
+against Wang et al. (2026) rotation-curve and vertical-potential data.
 
-- `FINAL_REPRODUCTION_CRITERIA.md`
-- `RECONSTRUCTION_CRITERIA_AUDIT_2026-06-20.md`
-- `PUBLICATION_PIPELINE_MANIFEST.md`
+## Installation
+
+```bash
+pip install -e .
+```
 
 ## Publication Pipeline
 
-The pipeline is organised in sequential steps; steps 1a and 1b are
-independent and can run in parallel.
+The pipeline runs in sequential steps; steps 1a and 1b are independent
+and can run in parallel.
 
 ### Step 0 — Baryonic band
 
@@ -25,8 +26,8 @@ independent and can run in parallel.
 python scripts/rebuild_baryon_band.py --nbar 4
 ```
 
-Rebuilds `data/baryon_band.csv` with the four-baryonic-reconstruction
-kernel-weighted hybrid band (MI + LW + B2 + MM).
+Rebuilds `data/baryon_band.csv` with the four-source kernel-weighted
+hybrid band (MI + LW + B2 + MM).
 
 ### Step 1a — MC100 stochastic ensemble
 
@@ -34,20 +35,19 @@ kernel-weighted hybrid band (MI + LW + B2 + MM).
 python scripts/step1_build_baryonic_mc100.py
 ```
 
-Generates 100 mass-constrained stochastic baryonic realizations from the
-kernel-weighted band.  Required by steps 2 and 3.
+Generates 100 mass-constrained stochastic baryonic realizations.
+Required by steps 2 and 3.
 
-### Step 1b — Wang 78-point subset, jointly optimised disc scales (parallel with 1a)
+### Step 1b — Wang 78-point subset with jointly optimised disc scales
 
 ```bash
 python scripts/step1_table2_wang78_joint_disc.py
 ```
 
 Fits all gravity models to the Wang 78-point vertical-potential subset
-with the thin-disc ($z_t$) and thick-disc ($z_k$) scale factors optimised
-jointly with the gravity-model parameters.  Uses the pure centre curve of
-each baryonic reconstruction independently (not the MC100 ensemble).
-Produces the chi²_nu summary reported in Table 2 of the manuscript.
+with thin-disc and thick-disc scale factors optimised jointly with the
+gravity-model parameters. Produces the chi²_nu summary reported in
+Table 2 of the manuscript.
 
 ```bash
 # Print the LaTeX table body from an existing CSV without recomputing:
@@ -61,14 +61,15 @@ python scripts/step2_fit_all_models.py
 ```
 
 Fits all gravity models to the 100 stochastic baryonic realizations on
-the full 196-point radial–vertical vector.  Individual solver scripts are
+the full 196-point radial–vertical vector. Individual solver scripts are
 also available for parallel execution:
 
 ```bash
 python scripts/step2_qumond_simple.py
 python scripts/step2_qumond_standard.py
 python scripts/step2_qumond_mls.py
-python scripts/step2_stvg.py
+python scripts/step2_stvg.py                # sequential, single process
+python scripts/step2_stvg_parallel.py       # recommended: 12 workers, ~83 min/nbar
 ```
 
 ### Step 3 — Chi-squared summary and Fig. 2
@@ -88,7 +89,7 @@ python scripts/step4_analyze_hmg.py
 ```
 
 Characterizes the 100 baryonic realizations by the HMG/Einasto chi²_nu
-ratio and identifies the realizations in which HMG leads.
+ratio and identifies the realizations in which HMG is preferred.
 
 ### Full multi-nbar run
 
@@ -102,14 +103,10 @@ MI+LW+B2, MI+LW+B2+MM) and writes a combined chi²_nu summary to
 
 ## Diagnostic Shortcuts
 
-The following flags are useful only for testing code paths and must not
-be used for the publication table unless explicitly documented as
-diagnostics.
+The following flags are available for testing and must not be used for
+the publication table unless explicitly documented as diagnostics.
 
 ```bash
-# Diagnostic only: simplified radial-template baryonic reconstruction
-python scripts/step1_build_baryonic_mc100.py --full --diagnostic-radial-template
-
 # Diagnostic only: algebraic QUMOND proxies
 python scripts/step2_fit_all_models.py --full --approx-qumond
 
@@ -134,10 +131,6 @@ A publication rerun is acceptable only when:
 - HMG uses the common neighbourhood scale `s > 1` and `gamma_cen = pi/2`
   by default.
 
-The old radial-template reconstruction failed this test by producing an
-outer baryonic median near `R ~ 50 kpc` that was much too high.  It is
-now blocked by default.
-
 ## Main Outputs
 
 After a successful publication rerun, the principal generated files are:
@@ -153,6 +146,4 @@ After a successful publication rerun, the principal generated files are:
 - `outputs/nbar4/mc100_chi2_all_models.csv`
 - `outputs/nbar4/model_*_radial.csv`
 - `outputs/nbar4/model_*_vertical.csv`
-- `figs/fig2_nbar4.png`
-
-Output files in `outputs/` are generated products, not input data.
+- `figs/fig2_reproduced.png`

@@ -9,7 +9,7 @@ authors:
     orcid: "https://orcid.org/0000-0003-3100-2394"
     affiliation: "CUNEF University; Universidad de Chile"
 license: MIT
-repository-code: "https://github.com/robertmonjo/vertical_gravity_hmg"
+repository-code: "https://github.com/robertmonjo/vertical_gravity"
 keywords:
   - modified gravity
   - Milky Way
@@ -21,7 +21,8 @@ keywords:
   - reproducibility
 abstract: >
   Reproducibility package for 'Vertical gravitational potential of the Milky Way
-  as a multi-model benchmark' (Wang et al. 2026). Tests 11 model variants from
+  as a multi-model benchmark' (Monjo & Banik 2026). Tests 11 model variants from
   7 gravity frameworks (QUMOND, STVG, CDM NFW/Einasto, f(R) screened, Refracted
-  Gravity, VEG, and HMG anisotropic) against Wang+2026 observational data.
-  HMG is competitive with CDM Einasto in ~46% of baryonic realizations.
+  Gravity, VEG, and HMG anisotropic) against Wang et al. (2026) observational data.
+  HMG is preferred over CDM Einasto in 28% of baryonic realizations and matches
+  it within chi2_nu < 0.5 in 46%.
