@@ -2,7 +2,7 @@
 
 Reproducibility package for:
 
-> Monjo & Banik (2026). *Vertical gravitational potential of the Milky Way
+> Monjo & Sasi (2026). *Vertical gravitational potential of the Milky Way
 > as a multi-model benchmark.* Manuscript in preparation.
 
 Tests 11 model variants from 7 gravity frameworks (QUMOND, STVG,
