@@ -101,6 +101,16 @@ Runs steps 1a through 3 for all four nbar variants (MI only, MI+LW,
 MI+LW+B2, MI+LW+B2+MM) and writes a combined chi²_nu summary to
 `outputs/table2_all_nbar.txt`.
 
+
+### HMG neighbourhood scale *s*
+
+```bash
+python scripts/compute_s_all_nbars.py
+```
+
+Fits the common HMG neighbourhood scale *s* for each baryonic reconstruction
+(nbar1–4) and writes `outputs/s_hmg_all_nbars.csv`.
+
 ## Diagnostic Shortcuts
 
 The following flags are available for testing and must not be used for
@@ -147,3 +157,4 @@ After a successful publication rerun, the principal generated files are:
 - `outputs/nbar4/model_*_radial.csv`
 - `outputs/nbar4/model_*_vertical.csv`
 - `figs/fig2_reproduced.png`
+- `outputs/s_hmg_all_nbars.csv` — HMG neighbourhood scale *s* (p16/p50/p84) for nbar1–4
