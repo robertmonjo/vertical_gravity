@@ -1,10 +1,8 @@
-"""Compute corrected HMG s values for nbar1-4 and save to CSV.
+"""Compute HMG common-scale s for all four baryonic reconstructions.
 
-nbar1 (MI):          reads existing model_hmg_k1_params.csv (correct)
-nbar2 (MI+LW):       recalculates (no params CSV exists)
-nbar3 (MI+LW+B2):    reads existing model_hmg_k1_params.csv (correct)
-nbar4 (MI+LW+B2+MM): recalculates with correct band (original CSV was contaminated
-                      with nfam=1 band instead of the nbar4 band)
+For nbar1 and nbar3 the fitted values are read from model_hmg_k1_params.csv.
+For nbar2 and nbar4, s is recalculated directly from baryon_band_nbar{N}.csv
+using predict_hmg_common_s.
 
 Output: outputs/s_hmg_all_nbars.csv
 Columns: draw_id, draw_label, s_nbar1, s_nbar2, s_nbar3, s_nbar4
@@ -91,7 +89,7 @@ def compute_s_for_nbar(nbar: int,
     for i, (label, target_v, _) in enumerate(band_draws[:N_DRAWS]):
         draw_id = str(i + 1)
 
-        # v2_n_rad: smooth band target (same as step2 canonical)
+        # v2_n_rad: smooth baryonic band target velocity
         v2_n_rad = target_v ** 2
 
         # v2_n_vert: Poisson vc_n interpolated at rv_obs
@@ -144,7 +142,7 @@ def main():
     print("nbar2: recalculating...", flush=True)
     s_nbar2 = compute_s_for_nbar(2, rr, vv, ss, rv_obs, zv_obs, phi_obs, sig_phi, sig_z)
 
-    print("nbar4: recalculating (correcting nfam1-band contamination)...", flush=True)
+    print("nbar4: recalculating with nbar4 band...", flush=True)
     s_nbar4 = compute_s_for_nbar(4, rr, vv, ss, rv_obs, zv_obs, phi_obs, sig_phi, sig_z)
 
     # Write combined CSV
