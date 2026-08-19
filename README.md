@@ -1,4 +1,4 @@
-# vgrav — Milky Way vertical gravity benchmark
+# vgrav — Milky Way vertical gravity test
 
 Reproducibility package for:
 
