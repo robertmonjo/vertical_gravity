@@ -2,11 +2,9 @@
 
 Reproducibility package for:
 
-> Monjo & Sasi (2026). *Vertical gravitational potential of the Milky Way
-> as a multi-model benchmark.* Manuscript in preparation.
+> Monjo & Sasi (2026). *Radial--vertical gravity decoupling in the Milky Way: Modified gravity and dark matter tests using Gaia~DR3.* Manuscript in preparation.
 
-Tests 11 model variants from 7 gravity frameworks (QUMOND, STVG,
-CDM NFW/Einasto, f(R) screened, Refracted Gravity, VEG, and HMG)
+Tests 11 model variants from 7 gravity frameworks (QUMOND, STVG, CDM NFW/Einasto, f(R) screened, Refracted Gravity, VEG, and HMG)
 against Wang et al. (2026) rotation-curve and vertical-potential data.
 
 ## Installation
