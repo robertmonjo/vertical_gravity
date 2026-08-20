@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vgrav"
 version = "1.0.0"
-description = "Vertical gravity Milky Way benchmark: baryonic MC100 + 11 gravity models"
+description = "Radial-vertical gravity decoupling in the Milky Way: baryonic MC100 + 12 gravity models"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}

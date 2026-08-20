@@ -101,7 +101,7 @@ The four step scripts reproduce everything from the raw ingredients:
 # Step 1: Generate 100 MC100 baryonic draws
 python scripts/step1_build_baryonic_mc100.py --full
 
-# Step 2: Fit all 11 gravity models
+# Step 2: Fit 11 gravity models (STVG runs via step2_stvg_parallel.py)
 python scripts/step2_fit_all_models.py --full
 
 # Step 3: Chi² summary + Fig. 2
@@ -136,7 +136,7 @@ release/
 │
 ├── outputs/                Pre-computed results (fast-mode)
 │   ├── mc100_baryonic_{radial,vertical}.csv    100 baryonic draws
-│   ├── model_{key}_{radial,vertical}.csv       22 files (11 models × 2 grids)
+│   ├── model_{key}_{radial,vertical}.csv       24 files (12 models × 2 grids)
 │   ├── mc100_chi2_all_models.csv               1100 chi² rows
 │   ├── fig2_observational_data.csv             Observational data catalog
 │   └── hmg_competitive_analysis.csv            HMG per-draw comparison
@@ -147,7 +147,7 @@ release/
 │   ├── observations.py     Load Wang+2026 data from CSV
 │   ├── solver.py           Cylindrical Poisson solver (CylGrid)
 │   ├── baryonic.py         Parametric density + MC100 qcopula
-│   ├── models.py           All 11 gravity model equations
+│   ├── models.py           All 12 gravity model equations
 │   ├── chi2.py             Chi-squared and reduced chi-squared
 │   └── figures.py          Fig. 2 renderer + Table 2 printer
 │
@@ -248,7 +248,6 @@ total mass variation.  Seed: 20260607.
 | `cdm_nfw` | CDM NFW | 2 | NFW halo, local DM density fit |
 | `cdm_einasto` | CDM Einasto | 3 | Einasto halo, α, ρ_s, r_s free |
 | `hmg_k1` | s-HMG (This Work) | 1 | single neighbourhood scale s; radial+vertical |
-| `e2d_k2` | sr_h-HMG E-2D (This Work) | 2 | s + hydrostatic radius r_h; radial+vertical |
 | `fr_screened` | f(R) screened | 2 | ν = 1 + δ·exp(−x/xc) |
 | `refracted_gravity` | Refracted Gravity | 2 | ε(x) screening function |
 

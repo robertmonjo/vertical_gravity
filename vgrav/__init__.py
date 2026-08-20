@@ -1,11 +1,11 @@
-"""vgrav — Vertical Gravity Milky Way benchmark.
+"""vgrav — Radial-vertical gravity decoupling in the Milky Way.
 
 Package structure
 -----------------
 observations   Load Wang+2026 rotation curve and vertical potential data.
 solver         Cylindrical axisymmetric Poisson solver (for QUMOND / STVG).
 baryonic       Parametric density model + MC100 qcopula generation.
-models         Gravity model equations for 11 models (CDM, MOND, STVG, HMG,
+models         Gravity model equations for 12 models (CDM, MOND, STVG, HMG,
                f(R), Refracted Gravity, Emergent Gravity).
 chi2           Chi-squared and reduced chi-squared computation.
 figures        Standalone Figure 2 renderer and Table 2 printer.
@@ -27,7 +27,7 @@ Full pipeline (from scratch)
 See scripts/step1_build_baryonic_mc100.py  through  step4_analyze_hmg.py.
 
     python scripts/step1_build_baryonic_mc100.py   # build 100 baryonic draws
-    python scripts/step2_fit_all_models.py          # fit 11 gravity models
+    python scripts/step2_fit_all_models.py          # fit 11 models (STVG separate)
     python scripts/step3_reproduce_fig2_table2.py   # chi^2 summary + figure
     python scripts/step4_analyze_hmg.py             # HMG competitive analysis
 
@@ -78,7 +78,6 @@ from vgrav.models import (
     einasto_mass,
     einasto_density_from_local,
     predict_mond_proxy,
-    predict_hmg_common_s,
     predict_hmg_proxy,
     predict_nu_proxy,
     predict_cdm_nfw,
@@ -104,7 +103,7 @@ __all__ = [
     # models
     "nu_mond", "hmg_factor", "nu_fr", "nu_rg", "nu_eg",
     "nfw_mass", "nfw_density_from_local", "einasto_mass", "einasto_density_from_local",
-    "predict_mond_proxy", "predict_hmg_common_s", "predict_hmg_proxy", "predict_nu_proxy",
+    "predict_mond_proxy", "predict_hmg_proxy", "predict_nu_proxy",
     "predict_cdm_nfw", "predict_cdm_einasto",
     "predict_stvg", "predict_qumond_solver",
     # figures
