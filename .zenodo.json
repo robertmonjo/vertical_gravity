@@ -1,5 +1,5 @@
 {
-  "title": "vgrav: Radial–vertical gravity decoupling in the Milky Way",
+  "title": "vgrav: Radial–vertical gravity decoupling in the Milky Way as a multi-model test",
   "upload_type": "software",
   "description": "Reproducibility package for 'Radial–vertical gravity decoupling in the Milky Way: modified gravity and dark matter tests using Gaia DR3' (Monjo & Sasi 2026). Tests 12 model variants from 7 gravity frameworks (QUMOND ×3, VEG ×2, STVG, CDM NFW/Einasto, f(R) screened, Refracted Gravity, and HMG ×2) against Wang+2026 Milky Way rotation-curve and vertical-potential data. In the best-fit baryonic configuration (McGaugh–Imig), HMG (one free parameter) leads in 62 of 100 stochastic baryonic realizations; including all four baryonic reconstructions, CDM-Einasto (three parameters) progressively takes the lead. Includes the vgrav Python library, pre-computed outputs, and step-by-step reproduction scripts.",
   "creators": [

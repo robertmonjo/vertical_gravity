@@ -1,4 +1,4 @@
-# vgrav — Vertical Gravity Milky Way benchmark
+# vgrav — Radial–vertical gravity decoupling in the Milky Way: a multi-model test
 
 Reproducibility package for the paper:
 
@@ -81,7 +81,7 @@ All other models agree with the paper to better than 1%.
 
 The large chi2_nu for Baryonic Newtonian (~183-195) reflects the well-known
 missing-mass problem: baryons alone cannot explain the observed Milky Way
-rotation curve.  CDM halos and HMG anisotropic give the best fits (chi2_nu ~ 2.5-3.1).
+rotation curve.  CDM-Einasto and s-HMG give the best fits (chi2_nu ~ 2.5-3.1).
 
 ### Mode 2 — Model comparison analysis
 
@@ -89,8 +89,7 @@ rotation curve.  CDM halos and HMG anisotropic give the best fits (chi2_nu ~ 2.5
 python scripts/step4_analyze_hmg.py
 ```
 
-Reads `outputs/mc100_chi2_all_models.csv` and reports which of the 100
-baryonic realizations are competitive between HMG and CDM Einasto.
+Reads `outputs/mc100_chi2_all_models.csv` and identifies the baryonic realizations in which s-HMG outperforms CDM-Einasto by reduced chi².
 
 ---
 
@@ -174,7 +173,7 @@ from vgrav import (
     predict_cdm_nfw,          # CDM NFW: vc + phi from baryonic curves
     predict_cdm_einasto,      # CDM Einasto
     predict_mond_proxy,       # MOND proxy: vc = sqrt(nu)*vc_N
-    predict_hmg_proxy,        # HMG anisotropic proxy
+    predict_hmg_proxy,        # s-HMG proxy (radial+vertical)
     chi2_radial,              # Radial chi-squared
     chi2_vertical,            # Vertical chi-squared (Kz-corrected)
     chi2_nu,                  # Reduced chi-squared
