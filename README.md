@@ -83,7 +83,7 @@ The large chi2_nu for Baryonic Newtonian (~183-195) reflects the well-known
 missing-mass problem: baryons alone cannot explain the observed Milky Way
 rotation curve.  CDM halos and HMG anisotropic give the best fits (chi2_nu ~ 2.5-3.1).
 
-### Mode 2 — HMG competitive analysis
+### Mode 2 — Model comparison analysis
 
 ```bash
 python scripts/step4_analyze_hmg.py
