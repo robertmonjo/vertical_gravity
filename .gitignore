@@ -1,2 +1,5 @@
 
 *.egg-info/
+outputs/bc_fig2_nbar*/
+figs/fig2_bc_nbar4.png
+figs/fig2_internal_nbar1.png

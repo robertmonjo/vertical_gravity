@@ -83,6 +83,27 @@ The large chi2_nu for Baryonic Newtonian (~183-195) reflects the well-known
 missing-mass problem: baryons alone cannot explain the observed Milky Way
 rotation curve.  CDM-Einasto and s-HMG give the best fits (chi2_nu ~ 2.5-3.1).
 
+### Table 3 and Fig. 2 (band-consistent ensembles)
+
+The manuscript's Table 3 and Fig. 2 use the band-consistent (BC) fits stored in
+`outputs/bc_nbar{1,2,3,4}/`, one directory per baryonic ensemble (MI, MI+LW,
+MI+LW+B2, MI+LW+B2+MM). Each model CSV stores the chi² of every draw in its
+last row.
+
+```bash
+# Fig. 2: writes figs/fig2_reproduced_4fam.png
+python scripts/step3_bc_fig2.py
+
+# Table 3: p50 (p16/p84) of chi2_nu and number of leads per ensemble
+python scripts/bc_leads_table.py
+```
+
+To refit the BC models from the baryonic draws (several hours per ensemble):
+
+```bash
+python scripts/step2_bc.py --full --no-stvg --baryonic-dir outputs/nbar1 --outdir outputs/bc_nbar1
+```
+
 ### Mode 2 — Model comparison analysis
 
 ```bash
@@ -138,6 +159,8 @@ release/
 │   ├── mc100_baryonic_{radial,vertical}.csv    100 baryonic draws
 │   ├── model_{key}_{radial,vertical}.csv       24 files (12 models × 2 grids)
 │   ├── mc100_chi2_all_models.csv               1100 chi² rows
+│   ├── bc_nbar{1,2,3,4}/                       Band-consistent fits (Table 3, Fig. 2)
+│   ├── wang78_table2_joint_disc.csv            Wang 78-point joint-disc fits
 │   ├── fig2_observational_data.csv             Observational data catalog
 │   └── hmg_competitive_analysis.csv            HMG per-draw comparison
 │
@@ -155,7 +178,10 @@ release/
     ├── step0_reproduce_fig1.py         Reproduce Fig. 1 (density + spiral arms)
     ├── step1_build_baryonic_mc100.py   MC100 baryonic draws
     ├── step2_fit_all_models.py         Gravity model fitting
+    ├── step2_bc.py                     Band-consistent model fitting
     ├── step3_reproduce_fig2_table2.py  Main verification script
+    ├── step3_bc_fig2.py                Fig. 2 from the band-consistent fits
+    ├── bc_leads_table.py               Table 3 (chi2_nu percentiles and leads)
     └── step4_analyze_hmg.py            HMG competitive analysis
 ```
 
@@ -248,6 +274,7 @@ total mass variation.  Seed: 20260607.
 | `cdm_nfw` | CDM NFW | 2 | NFW halo, local DM density fit |
 | `cdm_einasto` | CDM Einasto | 3 | Einasto halo, α, ρ_s, r_s free |
 | `hmg_k1` | s-HMG (This Work) | 1 | single neighbourhood scale s; radial+vertical |
+| `e2d_k2` | sr_h-HMG (This Work) | 2 | neighbourhood scale s and external-regime radius r_h |
 | `fr_screened` | f(R) screened | 2 | ν = 1 + δ·exp(−x/xc) |
 | `refracted_gravity` | Refracted Gravity | 2 | ε(x) screening function |
 

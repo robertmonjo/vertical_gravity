@@ -1070,3 +1070,102 @@ def predict_cdm_einasto_per_draw(
         lambda r: einasto_mass(r, rho_s, rs, al),
     )
     return vc_out, phi_out, tuple(res.x)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# E-2D 2p (Monjo 2024 lensing-paper variant with neighbourhood clipping r_hyd)
+# Reference: Monjo (2024/2025) RAR/KiDS paper; see also cluster MSG-001 2026-08-11
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_E2D_R_GRAV = 2.0   # kpc — inner clipping floor for Rc
+
+
+def _e2d_gamma0(q: np.ndarray) -> np.ndarray:
+    """E-2D angular factor γ₀(q) = φ/cos(φ), φ = arcsin(√(3/4 + q/4)).
+
+    Minimum at q=0: 2π/3.  Diverges as q→1 (clipped at q < 1-ε).
+    """
+    q = np.clip(np.asarray(q, dtype=float), 0.0, 1.0 - 1e-9)
+    phi = np.arcsin(np.sqrt(np.clip(0.75 + 0.25 * q, 0.0, 1.0)))
+    return phi / np.maximum(np.cos(phi), 1e-12)
+
+
+def _e2d_eps_sq(v2_n_at_rsc: np.ndarray, rsc: np.ndarray) -> np.ndarray:
+    """E-2D ε²(Rsc) = 1/6 + 2·vc_N(Rsc)²·T₀²/Rsc²  (dimensionless)."""
+    rsc = np.maximum(np.asarray(rsc, dtype=float), 1e-9)
+    return 1.0 / 6.0 + 2.0 * np.asarray(v2_n_at_rsc, dtype=float) * T0_KPC_PER_KMS ** 2 / rsc ** 2
+
+
+def e2d_k2_radial(
+    v2_n_rad: np.ndarray,
+    radius: np.ndarray,
+    v2_n_interp_func,
+    s: float,
+    r_hyd: float,
+) -> np.ndarray:
+    """E-2D 2p circular speed (midplane, k=2 free parameters).
+
+    g_model = √(g_N² + 2·g_N·c/T₀/γ₀(q));  vc = √(g_model·R)
+
+    Parameters
+    ----------
+    v2_n_rad         : baryonic v²_N on radius grid [(km/s)²]
+    radius           : radii [kpc]
+    v2_n_interp_func : callable(r) → band v²_N(r), used to evaluate ε²(Rsc)
+    s                : neighbourhood scale (free parameter)
+    r_hyd            : clipping radius [kpc] (free parameter)
+    """
+    radius = np.asarray(radius, dtype=float)
+    v2_n_rad = np.asarray(v2_n_rad, dtype=float)
+    rc = np.clip(radius, _E2D_R_GRAV, float(r_hyd))
+    rsc = s * rc
+    eps_sq = _e2d_eps_sq(v2_n_interp_func(rsc), rsc)
+    g_n = np.maximum(v2_n_rad / np.maximum(radius, 1e-9), 1e-12)
+    ve2 = 2.0 * v2_n_rad                           # = 2·g_N·R on midplane
+    vh2 = (radius / T0_KPC_PER_KMS) ** 2
+    q = np.abs(ve2 - vh2 * eps_sq) / np.maximum(vh2 * eps_sq + ve2, 1e-12)
+    g_model = np.sqrt(np.maximum(
+        g_n ** 2 + 2.0 * g_n * C_KMS / T0_KPC_PER_KMS / _e2d_gamma0(q), 0.0
+    ))
+    return np.sqrt(np.maximum(g_model * radius, 0.0))
+
+
+def e2d_k2_vertical(
+    rv: np.ndarray,
+    zv: np.ndarray,
+    v2_n_vert: np.ndarray,
+    phi_n: np.ndarray,
+    v2_n_interp_func,
+    s: float,
+    r_hyd: float,
+) -> np.ndarray:
+    """E-2D 2p vertical potential Φ(R,z) − Φ(R,0).
+
+    Computes ΔK_z = Δg_3d · z/r at each obs point and integrates over z.
+
+    Parameters
+    ----------
+    rv, zv           : obs (R, z) coordinates [kpc]
+    v2_n_vert        : Poisson v²_N(R) at rv [(km/s)²], used for g_r_N
+    phi_n            : Poisson Φ(R,z)−Φ(R,0) at obs points [(km/s)²]
+    v2_n_interp_func : callable(r) → band v²_N(r), for ε²(Rsc_3d)
+    s, r_hyd         : model parameters
+    """
+    from vgrav.chi2 import vertical_force_from_phi
+    rv = np.asarray(rv, dtype=float)
+    zv = np.asarray(zv, dtype=float)
+    r3d = np.sqrt(rv * rv + zv * zv)
+    rc = np.clip(r3d, _E2D_R_GRAV, float(r_hyd))
+    rsc = s * rc
+    eps_sq = _e2d_eps_sq(v2_n_interp_func(rsc), rsc)
+    k_z_n = vertical_force_from_phi(phi_n, rv, zv)
+    g_r_n = np.maximum(v2_n_vert / np.maximum(rv, 1e-9), 1e-12)
+    g_n_3d = np.sqrt(g_r_n ** 2 + k_z_n ** 2)
+    ve2 = 2.0 * g_n_3d * np.maximum(r3d, 1e-9)
+    vh2 = (r3d / T0_KPC_PER_KMS) ** 2
+    q = np.abs(ve2 - vh2 * eps_sq) / np.maximum(vh2 * eps_sq + ve2, 1e-12)
+    g_3d_model = np.sqrt(np.maximum(
+        g_n_3d ** 2 + 2.0 * g_n_3d * C_KMS / T0_KPC_PER_KMS / _e2d_gamma0(q), 0.0
+    ))
+    delta_k = (g_3d_model - g_n_3d) * zv / np.maximum(r3d, 1e-12)
+    return phi_n + integrate_delta_force(delta_k, rv, zv)

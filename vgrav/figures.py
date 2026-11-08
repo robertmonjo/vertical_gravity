@@ -42,7 +42,9 @@ _MODEL_STYLES: dict[str, tuple] = {
     "stvg":               ("STVG",                        "#e03028", "-",  2.438),
     "cdm_nfw":            ("CDM NFW",                     "#e09c28", "-",  2.725),
     "cdm_einasto":        ("CDM Einasto",                 "#b8e028", "-",  3.012),
-    "hmg_k1":             ("HMG (This Work)",             "#4de028", "-",  3.300),
+    "hmg_sp":             (r"$s_{\rm p}$-HMG (This Work)",    "#8de050", "-",  2.800),   # point-mass approx.
+    "hmg_sr":             (r"$s$-HMG (This Work)",            "#4de028", "-",  2.800),   # standard
+    "e2d_k2":             (r"$sr_{\rm h}$-HMG (This Work)", "#4de028", "-",  3.300),
 }
 _BARY_COLOR = "#6baed6"
 
@@ -259,8 +261,8 @@ def plot_fig2(
     # Load HMG 1-fam overlay (release_alt / self-consistent Imig) if provided
     hmg_1fam_data: Optional[dict] = None
     if hmg_1fam_outputs_dir is not None:
-        _h1r = Path(hmg_1fam_outputs_dir) / "model_hmg_k1_radial.csv"
-        _h1v = Path(hmg_1fam_outputs_dir) / "model_hmg_k1_vertical.csv"
+        _h1r = Path(hmg_1fam_outputs_dir) / "model_hmg_sp_radial.csv"
+        _h1v = Path(hmg_1fam_outputs_dir) / "model_hmg_sp_vertical.csv"
         if _h1r.exists() and _h1v.exists():
             _r1c, _r1d, _r1chi2 = _read_draw_csv(_h1r)
             _v1c, _v1d, _v1chi2 = _read_draw_csv(_h1v)
@@ -296,19 +298,19 @@ def plot_fig2(
         ax_top.fill_between(hmg_1fam_data["r_coords"], _h1_p16, _h1_p84,
                             color=_h1_color, alpha=0.08, lw=0)
         _h1_chi2_sfx = ""
-        if "hmg_k1" in _chi2_med:
+        if "hmg_sp" in _chi2_med:
             _h1_chi2_csv = Path(hmg_1fam_outputs_dir) / "mc100_chi2_all_models.csv"
             if _h1_chi2_csv.exists():
                 _h1_vals = []
                 with open(_h1_chi2_csv, newline="", encoding="utf-8") as _fh:
                     for _row in csv.DictReader(_fh):
-                        if _row["model_key"] == "hmg_k1":
+                        if _row["model_key"] == "hmg_sp":
                             _h1_vals.append(float(_row["chi2_nu"]))
                 if _h1_vals:
                     _h1_chi2_sfx = f" ($\\chi^2_{{\\nu}}={float(np.median(_h1_vals)):.2f}$)"
         h1, = ax_top.plot(hmg_1fam_data["r_coords"], _h1_med,
                           color=_h1_color, ls="-", lw=1.6,
-                          label="HMG+Imig (This Work)" + _h1_chi2_sfx, zorder=4, alpha=0.92)
+                          label=r"$s$HMG+Imig (This Work)" + _h1_chi2_sfx, zorder=4, alpha=0.92)
         model_handles.append(h1)
 
     # Observational data — per-survey styled (default group_style)
@@ -546,7 +548,7 @@ def print_table2(outputs_dir: Path, chi2_csv: Optional[Path] = None) -> None:
     order = [
         "baryonic", "qumond_simple", "qumond_standard", "qumond_mls",
         "stvg", "cdm_nfw", "cdm_einasto",
-        "hmg_k1", "fr_screened", "refracted_gravity", "veg_fixed", "veg_free",
+        "hmg_sr", "hmg_sp", "fr_screened", "refracted_gravity", "veg_fixed", "veg_free",
     ]
     for key in order:
         if key not in model_chi2:
