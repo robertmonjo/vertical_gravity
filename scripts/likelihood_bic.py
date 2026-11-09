@@ -79,6 +79,7 @@ ALGEBRAIC_MODELS = {
     "veg_fixed": ([], [[]]),
     "veg_free": ([(LN(10.0), LN(5.0e4))], [[LN(A_EG_FIXED)], [LN(A_EG_FIXED) + 1], [LN(A_EG_FIXED) - 1]]),
     "fr_screened": ([(1e-3, 20.0), (1e-3, 50.0)], [[0.33, 1.0], [0.5, 2.0], [0.2, 0.5], [1.0, 3.0]]),
+    "fr_bounded": ([(1e-3, 1.0 / 3.0), (1e-3, 50.0)], [[0.3, 1.0], [0.3, 2.0], [0.2, 0.5], [0.3, 3.0]]),
     "refracted_gravity": ([(1e-4, 1 - 1e-4), (1e-3, 50.0)], [[0.18, 0.7], [0.3, 1.0], [0.1, 0.5], [0.5, 2.0]]),
     "cdm_nfw": ([(-3.0, 1.0), (0.0, 2.3)], [[-0.46, 1.24], [-0.5, 1.0], [-0.3, 1.5], [-0.6, 0.8]]),
     "cdm_einasto": ([(-3.0, 1.0), (0.0, 2.3), (0.1, 15.0)],
@@ -159,13 +160,13 @@ def predict_algebraic(model, config, theta, zt, zk):
     vc_sc = np.sqrt(v2_rad)
     if model == "baryonic":
         return vc_sc, phi_sc
-    if model in ("veg_fixed", "veg_free", "fr_screened", "refracted_gravity"):
+    if model in ("veg_fixed", "veg_free", "fr_screened", "fr_bounded", "refracted_gravity"):
         g_n = v2_rad / np.maximum(r_line, 1e-8)
         if model == "veg_fixed":
             nu = nu_eg(g_n, A_EG_FIXED)
         elif model == "veg_free":
             nu = nu_eg(g_n, math.exp(theta[0]))
-        elif model == "fr_screened":
+        elif model in ("fr_screened", "fr_bounded"):
             nu = nu_fr(g_n / A0_KMS2_PER_KPC, theta[0], theta[1])
         else:
             nu = nu_rg(g_n / A0_KMS2_PER_KPC, theta[0], theta[1])

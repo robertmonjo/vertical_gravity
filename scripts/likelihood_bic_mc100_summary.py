@@ -21,10 +21,10 @@ from pathlib import Path
 import numpy as np
 
 K = {"baryonic": 0, "mond_simple": 0, "mond_standard": 0, "mond_rar": 0, "veg_fixed": 0,
-     "veg_free": 1, "hmg_k1": 1, "hmg_sr": 1, "e2d_k2": 2, "fr_screened": 2,
+     "veg_free": 1, "hmg_k1": 1, "hmg_sr": 1, "e2d_k2": 2, "fr_screened": 2, "fr_bounded": 2,
      "refracted_gravity": 2, "cdm_nfw": 2, "cdm_einasto": 3, "stvg": 2}
 COMPETITION = ["baryonic", "mond_simple", "mond_standard", "mond_rar", "veg_fixed", "veg_free",
-               "fr_screened", "refracted_gravity", "cdm_nfw", "cdm_einasto", "hmg_k1", "e2d_k2"]
+               "fr_screened", "fr_bounded", "refracted_gravity", "cdm_nfw", "cdm_einasto", "hmg_k1", "e2d_k2"]
 
 
 def last_row(path: Path) -> np.ndarray:

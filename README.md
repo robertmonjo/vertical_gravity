@@ -166,6 +166,10 @@ does so. In the model CSVs written with `--full-likelihood`, the `chi2_vertical`
 row holds `-2 ln L_vert`; `likelihood_setup.json` stores N and the radial
 `sum ln(2 pi sigma^2)`.
 
+`fr_screened` is the f(R)-type interpolation function with a free amplitude
+`delta_sc`; `fr_bounded` is the same function with `delta_sc <= 1/3`, the
+largest enhancement of the unscreened force in metric f(R) gravity (4/3).
+
 Model keys: `hmg_k1` (step2_bc) and `hmg_sp` (likelihood_bic) are s-HMG;
 `e2d_k2` is sr_h-HMG; `mond_*` (step2_bc) and `qumond_*` (likelihood_bic) are
 the QUMOND interpolation functions.

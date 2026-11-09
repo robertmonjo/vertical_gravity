@@ -98,7 +98,7 @@ MODEL_K = {
     "hmg_k1": 1,
     "hmg_sr": 1,
     "e2d_k2": 2,
-    "fr_screened": 2, "refracted_gravity": 2,
+    "fr_screened": 2, "fr_bounded": 2, "refracted_gravity": 2,
     "cdm_nfw": 2, "cdm_einasto": 3,
     "stvg": 2,
 }
@@ -156,7 +156,8 @@ def _write_model_csvs(out_dir: Path, key: str, r_grid, rz_grid, rad_curves,
 # v_n_rad = band draw interpolated to r_grid = baryonic v_N for radial term.
 # phi_n   = Poisson vertical potential (paired with this draw via step1).
 
-def _fit_fr(r_grid, v_n_rad, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, sig_phi, sig_z):
+def _fit_fr(r_grid, v_n_rad, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, sig_phi, sig_z,
+            delta_max=None):
     # v_n_rad: band, for radial chi²; vc_n: Poisson, for vertical nu (consistent with phi_n).
     g_n = v_n_rad ** 2 / np.maximum(r_grid, 1e-8)
     g_n_z = vc_n ** 2 / np.maximum(r_grid, 1e-8)
@@ -165,7 +166,7 @@ def _fit_fr(r_grid, v_n_rad, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, s
 
     def obj(t):
         d, xc = t
-        if d <= 0 or xc <= 1e-3:
+        if d <= 0 or xc <= 1e-3 or (delta_max is not None and d > delta_max):
             return 1e30
         nu = nu_fr(x_n, d, xc)
         vc_m = np.sqrt(np.maximum(nu * v_n_rad ** 2, 0.0))
@@ -175,7 +176,10 @@ def _fit_fr(r_grid, v_n_rad, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, s
                 + chi2_vertical(nu_obs * phi_n, rv_obs, zv_obs, rv_obs, zv_obs, phi_obs, sig_phi, sig_z))
 
     best = None
-    for x0 in [(0.33, 1.0), (0.5, 2.0), (0.2, 0.5), (1.0, 3.0), (0.7, 1.5)]:
+    starts = [(0.33, 1.0), (0.5, 2.0), (0.2, 0.5), (1.0, 3.0), (0.7, 1.5)]
+    if delta_max is not None:
+        starts = [(min(d0, 0.9 * delta_max), xc0) for d0, xc0 in starts]
+    for x0 in starts:
         try:
             r = minimize(obj, x0, method="Nelder-Mead",
                          options={"maxiter": 4000, "xatol": 1e-5, "fatol": 1e-5})
@@ -401,6 +405,7 @@ def _run_full(out_dir: Path, band_path: Path | None, baryonic_dir: Path,
         ("hmg_sr",            1, "hmg_sr"),   # s-HMG (standard, E-2D vertical)
         ("e2d_k2",            2, "e2d_k2"),
         ("fr_screened",       2, "fr"),
+        ("fr_bounded",        2, "fr_bounded"),   # f(R) enhancement bound: delta <= 1/3
         ("refracted_gravity", 2, "rg"),
         ("cdm_nfw",           2, "cdm_nfw"),
         ("cdm_einasto",       3, "cdm_einasto"),
@@ -514,6 +519,10 @@ def _run_full(out_dir: Path, band_path: Path | None, baryonic_dir: Path,
             elif tag == "fr":
                 vc_m, phi_m = _fit_fr(r_grid, v_n_rad, vc_n, phi_n, rv_obs, zv_obs,
                                       rr, vv, ss, phi_obs, sig_phi, sig_z)
+
+            elif tag == "fr_bounded":
+                vc_m, phi_m = _fit_fr(r_grid, v_n_rad, vc_n, phi_n, rv_obs, zv_obs,
+                                      rr, vv, ss, phi_obs, sig_phi, sig_z, delta_max=1.0 / 3.0)
 
             elif tag == "rg":
                 vc_m, phi_m = _fit_rg(r_grid, v_n_rad, vc_n, phi_n, rv_obs, zv_obs,

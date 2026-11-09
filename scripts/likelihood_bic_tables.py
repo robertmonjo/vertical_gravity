@@ -26,7 +26,8 @@ ROWS_A = [
     ("baryonic", "Baryonic Newtonian"), ("qumond_simple", "QUMOND Simple"),
     ("qumond_standard", "QUMOND Standard"), ("qumond_mls", "QUMOND MLS"),
     ("veg_fixed", "VEG original"), ("veg_free", r"VEG free $a_{\rm EG}$"),
-    ("fr_screened", r"$f(\mathcal{R})$ screened"), ("refracted_gravity", "ReG"), ("stvg", "STVG"),
+    ("fr_screened", r"$f(\mathcal{R})$-type $\nu$"), ("fr_bounded", r"$f(\mathcal{R})$ ($\delta_{\rm sc}\le1/3$)"),
+    ("refracted_gravity", "ReG"), ("stvg", "STVG"),
     ("cdm_nfw", "CDM-NFW"), ("cdm_einasto", "CDM-Einasto"),
     ("hmg_sp", r"$s\text{-}$HMG (This Work)"), ("e2d_k2", r"$sr_\text{h}\text{-}$HMG (This Work)"),
 ]
@@ -34,7 +35,8 @@ ROWS_B = [
     ("baryonic", "Baryonic Newtonian", 0), ("mond_simple", "QUMOND Simple", 0),
     ("mond_standard", "QUMOND Standard", 0), ("mond_rar", "QUMOND MLS", 0),
     ("veg_fixed", "VEG original", 0), ("veg_free", r"VEG free $a_{\rm EG}$", 1),
-    ("fr_screened", r"$f(\mathcal{R})$ screened", 2), ("refracted_gravity", "ReG", 2),
+    ("fr_screened", r"$f(\mathcal{R})$-type $\nu$", 2), ("fr_bounded", r"$f(\mathcal{R})$ ($\delta_{\rm sc}\le1/3$)", 2),
+    ("refracted_gravity", "ReG", 2),
     ("cdm_nfw", "CDM-NFW", 2), ("cdm_einasto", "CDM-Einasto", 3),
     ("hmg_k1", r"$s\text{-}$HMG (This Work)", 1), ("e2d_k2", r"$sr_\text{h}\text{-}$HMG (This Work)", 2),
 ]
