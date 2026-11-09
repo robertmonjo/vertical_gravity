@@ -340,13 +340,28 @@ def _fit_stvg(r_grid, v_n_rad, phi_n, rv_obs, zv_obs, comp_grid,
 
 def _run_full(out_dir: Path, band_path: Path | None, baryonic_dir: Path,
               n_draws_limit: int | None, no_stvg: bool,
-              models_filter: list | None, approx: bool = True) -> None:
+              models_filter: list | None, approx: bool = True,
+              full_likelihood: bool = False, radial_variant: str = "all") -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     _rot, vert = load_observations()
-    rr, vv, ss = radial_fit_arrays(
-        chi2_catalog_path=ROOT / "data" / "fig2_observational_catalog.csv"
-    )
-    rv_obs, zv_obs, phi_obs, sig_phi, sig_z = vertical_arrays(vert=vert)
+    catalog = ROOT / "data" / "fig2_observational_catalog.csv"
+    if full_likelihood:
+        import json
+        import vgrav.chi2 as chi2_module
+        from vgrav.observations import radial_variant_arrays
+        chi2_module.LOG_SIGMA_TERM = True
+        rr, vv, ss = radial_variant_arrays(radial_variant, catalog)
+        rv_obs, zv_obs, phi_obs, sig_phi, sig_z = vertical_arrays(vert=vert, phi_sys_fraction=0.05)
+        (out_dir / "likelihood_setup.json").write_text(json.dumps({
+            "radial_variant": radial_variant, "n_radial": int(len(rr)), "n_vertical": int(len(rv_obs)),
+            "radial_log_term": chi2_module.radial_log_term(ss),
+            "note": "chi2_vertical rows hold -2 ln L_vert; add radial_log_term to chi2_radial + chi2_vertical for -2 ln L",
+        }, indent=2))
+        print(f"  Full likelihood: radial variant {radial_variant} ({len(rr)} pts), "
+              f"systematics on, ln sigma term on", flush=True)
+    else:
+        rr, vv, ss = radial_fit_arrays(chi2_catalog_path=catalog)
+        rv_obs, zv_obs, phi_obs, sig_phi, sig_z = vertical_arrays(vert=vert)
 
     rad_p = baryonic_dir / "mc100_baryonic_radial.csv"
     vert_p = baryonic_dir / "mc100_baryonic_vertical.csv"
@@ -592,6 +607,10 @@ def main() -> None:
                              "No usable default — must be specified explicitly.")
     parser.add_argument("--outdir", default=None, metavar="DIR",
                         help="Output directory (default: outputs/bc)")
+    parser.add_argument("--full-likelihood", action="store_true",
+                        help="Wang et al. (2026) likelihood: ln sigma term and systematic errors")
+    parser.add_argument("--radial-variant", default="all",
+                        help="all, no_eilers, no_wang, overlap_correlated or wang_only")
     args = parser.parse_args()
 
     if not args.full:
@@ -605,7 +624,8 @@ def main() -> None:
 
     _run_full(out_dir=out_dir, band_path=band_path, baryonic_dir=baryonic_dir,
               n_draws_limit=args.n_draws, no_stvg=args.no_stvg,
-              models_filter=models_filter, approx=args.approx)
+              models_filter=models_filter, approx=args.approx,
+              full_likelihood=args.full_likelihood, radial_variant=args.radial_variant)
 
 
 if __name__ == "__main__":

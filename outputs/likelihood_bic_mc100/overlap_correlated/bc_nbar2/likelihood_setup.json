@@ -1,0 +1,7 @@
+{
+  "radial_variant": "overlap_correlated",
+  "n_radial": 152,
+  "n_vertical": 44,
+  "radial_log_term": 1197.8305476774476,
+  "note": "chi2_vertical rows hold -2 ln L_vert; add radial_log_term to chi2_radial + chi2_vertical for -2 ln L"
+}

@@ -21,6 +21,25 @@ N_OBS_RAD: int = 152   # direct_rotation / used_in_fit=true rows in fig2_observa
 N_OBS_VERT: int = 44
 N_PRIMARY: int = N_OBS_RAD + N_OBS_VERT  # 196
 
+# When True, the vertical term is -2 ln L_vert of Wang et al. (2026), i.e. chi2
+# plus sum ln(2 pi sigma_eff^2); sigma_eff depends on the model K_z.
+LOG_SIGMA_TERM: bool = False
+
+
+def vertical_score(phi_at_obs, rv_obs, zv_obs, phi_obs, sig_phi, sig_z) -> float:
+    """Vertical chi2, or -2 ln L_vert when LOG_SIGMA_TERM is set."""
+    kz = vertical_force_from_phi(phi_at_obs, rv_obs, zv_obs)
+    var = sig_phi ** 2 + (kz * sig_z) ** 2
+    value = float(np.sum((phi_at_obs - phi_obs) ** 2 / var))
+    if LOG_SIGMA_TERM:
+        value += float(np.sum(np.log(2.0 * np.pi * var)))
+    return value
+
+
+def radial_log_term(ss: np.ndarray) -> float:
+    """Model-independent sum ln(2 pi sigma^2) of the radial likelihood."""
+    return float(np.sum(np.log(2.0 * np.pi * np.asarray(ss, dtype=float) ** 2)))
+
 
 def vertical_force_from_phi(
     phi: np.ndarray,
@@ -101,9 +120,7 @@ def chi2_vertical(
     sig_z             : uncertainty on z height  [kpc]
     """
     phi_at_obs = _match_rz(phi_model, rv_model, zv_model, rv_obs, zv_obs)
-    kz = vertical_force_from_phi(phi_at_obs, rv_obs, zv_obs)
-    sig_eff = np.sqrt(sig_phi ** 2 + (kz * sig_z) ** 2)
-    return float(np.sum(((phi_at_obs - phi_obs) / sig_eff) ** 2))
+    return vertical_score(phi_at_obs, rv_obs, zv_obs, phi_obs, sig_phi, sig_z)
 
 
 def weighted_quantile(

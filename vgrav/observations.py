@@ -113,8 +113,13 @@ def radial_fit_arrays(
 def vertical_arrays(
     vert: Optional[list[dict]] = None,
     vert_path: Optional[Path] = None,
+    phi_sys_fraction: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return (rv, zv, phi_obs, sig_phi, sig_z) arrays for all 44 vertical points."""
+    """Return (rv, zv, phi_obs, sig_phi, sig_z) arrays for all 44 vertical points.
+
+    phi_sys_fraction adds a systematic error phi_sys_fraction * Phi in quadrature
+    (Wang et al. 2026 adopt 0.05).
+    """
     if vert is None:
         vert = load_vertical_potential(vert_path)
     rv      = np.array([r["R_kpc"]          for r in vert])
@@ -122,4 +127,75 @@ def vertical_arrays(
     phi_obs = np.array([r["Phi_kms2"]        for r in vert])
     sig_phi = np.array([r["sigma_Phi_kms2"]  for r in vert])
     sig_z   = np.array([r["sigma_z_kpc"]     for r in vert])
+    sig_phi = np.sqrt(sig_phi ** 2 + (phi_sys_fraction * phi_obs) ** 2)
     return rv, zv, phi_obs, sig_phi, sig_z
+
+
+WANG_DATASET = "Wang2026_rotation_curve"
+EILERS_DATASET = "Eilers2019_McGaugh2019_adjusted"
+RADIAL_VARIANTS = ("all", "no_eilers", "no_wang", "overlap_correlated", "wang_only")
+
+
+def wang_systematic_fraction(R: np.ndarray, rot_path: Optional[Path] = None) -> np.ndarray:
+    """Fractional systematic error of the Wang et al. (2026) rotation curve at R.
+
+    Recovered from the published budget as sqrt(sigma_total^2 - sigma_obs^2)/v_c,
+    interpolated in R and clipped to the 5-20 per cent range quoted by Wang et al.
+    """
+    rot = load_rotation_curve(rot_path)
+    r_w = np.array([r["R_kpc"] for r in rot])
+    frac = np.array([np.sqrt(max(r["sigma_total_kms"] ** 2 - r["sigma_obs_kms"] ** 2, 0.0)) / r["vc_kms"]
+                     for r in rot])
+    order = np.argsort(r_w)
+    return np.clip(np.interp(R, r_w[order], frac[order]), 0.05, 0.20)
+
+
+def radial_variant_arrays(
+    variant: str,
+    chi2_catalog_path: Path,
+    add_systematics: bool = True,
+    sigma_floor: float = 3.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Radial fit arrays for one data-vector variant.
+
+    all                 the 152 points of the catalogue
+    no_eilers           without the Eilers/McGaugh curve (overlaps the Wang curve)
+    no_wang             without the Wang curve
+    overlap_correlated  all points, with the Wang and Eilers errors multiplied by
+                        sqrt(2) where both curves cover the same radii, which is
+                        the weight of two fully correlated measurements
+    wang_only           the 34 Wang points
+
+    With add_systematics, points outside the Wang curve receive the Wang
+    systematic fraction at their radius in quadrature; the Wang errors already
+    include it.
+    """
+    if variant not in RADIAL_VARIANTS:
+        raise ValueError(f"unknown radial variant {variant!r}")
+    rows = []
+    with open(chi2_catalog_path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            if (row.get("kind", "") == "direct_rotation"
+                    and row.get("used_in_fit", "").lower() == "true"):
+                rows.append(row)
+    if variant == "no_eilers":
+        rows = [r for r in rows if r["dataset"] != EILERS_DATASET]
+    elif variant == "no_wang":
+        rows = [r for r in rows if r["dataset"] != WANG_DATASET]
+    elif variant == "wang_only":
+        rows = [r for r in rows if r["dataset"] == WANG_DATASET]
+    rr = np.array([float(r["R_kpc"]) for r in rows])
+    vv = np.array([float(r["vc_kms"]) for r in rows])
+    ss = np.maximum(np.array([float(r["sigma_v_kms"]) for r in rows]), sigma_floor)
+    dataset = np.array([r["dataset"] for r in rows])
+    if add_systematics:
+        external = dataset != WANG_DATASET
+        ss[external] = np.hypot(ss[external], wang_systematic_fraction(rr[external]) * vv[external])
+    if variant == "overlap_correlated":
+        in_w, in_e = dataset == WANG_DATASET, dataset == EILERS_DATASET
+        lo = max(rr[in_w].min(), rr[in_e].min())
+        hi = min(rr[in_w].max(), rr[in_e].max())
+        overlap = (in_w | in_e) & (rr >= lo) & (rr <= hi)
+        ss[overlap] *= np.sqrt(2.0)
+    order = np.argsort(rr)
+    return rr[order], vv[order], ss[order]

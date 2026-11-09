@@ -104,6 +104,71 @@ To refit the BC models from the baryonic draws (several hours per ensemble):
 python scripts/step2_bc.py --full --no-stvg --baryon-band outputs/nbar1/baryon_band_nbar1.csv --baryonic-dir outputs/nbar1 --outdir outputs/bc_nbar1
 ```
 
+### Full-likelihood model comparison (BIC)
+
+The model comparison uses the likelihood of Wang et al. (2026):
+
+    -2 ln L = sum_rad [ (dv / sigma_v)^2 + ln(2 pi sigma_v^2) ]
+            + sum_vert [ (dPhi / sigma_eff)^2 + ln(2 pi sigma_eff^2) ]
+            + prior(rho_thin) + prior(rho_thick),
+
+with `sigma_eff^2 = sigma_Phi^2 + (K_z sigma_z)^2`, where `K_z` is the vertical
+force of each model. Systematic errors are added in quadrature: the Wang et al.
+rotation-curve budget (5–20 per cent, depending on R) to every radial point
+outside the Wang curve, whose errors already include it, and 5 per cent of
+`Phi` to the vertical points. The local stellar densities have Gaussian priors,
+`rho_thin(R0) ~ N(0.045, 0.003)` and `rho_thick(R0) ~ N(0.00525, 0.0006)`
+Msun pc^-3. Models are ranked by `BIC = -2 ln L_max + k ln N`.
+
+Five radial data vectors are evaluated (`vgrav.observations.radial_variant_arrays`):
+
+| Variant | Radial points | Content |
+|---|---|---|
+| `all` | 152 | all model-independent rotation-curve points |
+| `no_eilers` | 114 | without the Eilers/McGaugh curve, which overlaps the Wang curve |
+| `no_wang` | 118 | without the Wang curve |
+| `overlap_correlated` | 152 | all points; Wang and Eilers errors multiplied by sqrt(2) over their common radii |
+| `wang_only` | 34 | the Wang et al. curve alone (78 points with the vertical data) |
+
+Two frameworks are provided:
+
+1. **One fit per baryonic reconstruction** (`scripts/likelihood_bic.py`,
+   `scripts/likelihood_bic_stvg.py`). MI, LW, B2 and MM are fitted separately;
+   the thin- and thick-disc factors are free for every model, under the priors
+   above. QUMOND uses the 3D Poisson solver on a 5 x 5 disc grid centred on the
+   prior. STVG uses the linearity of the Yukawa term in alpha and in the
+   density: for each mu on a logarithmic grid (19 values, 0.003–3 kpc^-1) the
+   thin-disc, thick-disc, remaining-disc and bulge kernels are computed once,
+   and (z_t, z_k, alpha) are fitted by linear combination.
+   Output: `outputs/likelihood_bic/likelihood_bic_fits.csv`
+   (columns: variant, config, model, k, N, m2lnL, chi2, chi2_nu, BIC, zt, zk,
+   rho_thin, rho_thick, theta) and `outputs/likelihood_bic/summary.txt`.
+2. **Band-consistent MC100 ensembles** (`scripts/step2_bc.py --full-likelihood
+   --radial-variant V`). The four cumulative ensembles of Table 3 are refitted
+   draw by draw with the same likelihood (discs fixed by each draw).
+   `scripts/likelihood_bic_mc100_summary.py` gives the median Delta BIC with
+   respect to the best model of each draw and the number of draws in which each
+   model has the lowest BIC. Output: `outputs/likelihood_bic_mc100/summary_<variant>.txt`
+   and, per ensemble, `bic_per_draw.csv` and `likelihood_setup.json`.
+
+Reproduce everything from the bundled data and MC100 draws:
+
+```bash
+WORKERS=24 bash scripts/run_likelihood_bic.sh     # ~35 min on 32 cores
+python scripts/likelihood_bic.py --summary         # framework 1 tables
+cat outputs/likelihood_bic_mc100/summary_all.txt  # framework 2 table
+```
+
+Each ensemble must be run with its own baryonic band
+(`--baryon-band outputs/nbar<n>/baryon_band_nbar<n>.csv`); `run_likelihood_bic.sh`
+does so. In the model CSVs written with `--full-likelihood`, the `chi2_vertical`
+row holds `-2 ln L_vert`; `likelihood_setup.json` stores N and the radial
+`sum ln(2 pi sigma^2)`.
+
+Model keys: `hmg_k1` (step2_bc) and `hmg_sp` (likelihood_bic) are s-HMG;
+`e2d_k2` is sr_h-HMG; `mond_*` (step2_bc) and `qumond_*` (likelihood_bic) are
+the QUMOND interpolation functions.
+
 ### Mode 2 — Model comparison analysis
 
 ```bash
@@ -160,6 +225,8 @@ release/
 │   ├── model_{key}_{radial,vertical}.csv       24 files (12 models × 2 grids)
 │   ├── mc100_chi2_all_models.csv               1100 chi² rows
 │   ├── bc_nbar{1,2,3,4}/                       Band-consistent fits (Table 3, Fig. 2)
+│   ├── likelihood_bic/                         Full-likelihood fits per reconstruction (BIC)
+│   ├── likelihood_bic_mc100/                   Full-likelihood MC100 ensembles (BIC per draw)
 │   ├── wang78_table2_joint_disc.csv            Wang 78-point joint-disc fits
 │   ├── fig2_observational_data.csv             Observational data catalog
 │   └── hmg_competitive_analysis.csv            HMG per-draw comparison
@@ -182,6 +249,10 @@ release/
     ├── step3_reproduce_fig2_table2.py  Main verification script
     ├── step3_bc_fig2.py                Fig. 2 from the band-consistent fits
     ├── bc_leads_table.py               Table 3 (chi2_nu percentiles and leads)
+    ├── likelihood_bic.py               Full-likelihood fits per reconstruction
+    ├── likelihood_bic_stvg.py          STVG fits for likelihood_bic.py
+    ├── likelihood_bic_mc100_summary.py BIC summary of the MC100 ensembles
+    ├── run_likelihood_bic.sh           Runs the full-likelihood comparison
     └── step4_analyze_hmg.py            HMG competitive analysis
 ```
 

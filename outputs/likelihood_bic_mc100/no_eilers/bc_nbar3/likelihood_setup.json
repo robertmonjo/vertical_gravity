@@ -1,0 +1,7 @@
+{
+  "radial_variant": "no_eilers",
+  "n_radial": 114,
+  "n_vertical": 44,
+  "radial_log_term": 847.6205610509323,
+  "note": "chi2_vertical rows hold -2 ln L_vert; add radial_log_term to chi2_radial + chi2_vertical for -2 ln L"
+}

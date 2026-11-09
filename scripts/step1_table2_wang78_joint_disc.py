@@ -67,12 +67,13 @@ from vgrav.solver import (
 )
 from vgrav._constants import R_SUN, A0_KMS2_PER_KPC, A_EG_FIXED, G
 from vgrav.models import (
-    predict_hmg_common_s, _cdm_score,
+    predict_hmg_common_s, hmg_radial, _cdm_score,
     einasto_density_from_local, einasto_mass,
     nfw_density_from_local, nfw_mass,
     nu_fr, nu_rg, nu_eg,
     predict_qumond_solver,
     predict_stvg,
+    e2d_k2_radial, e2d_k2_vertical,
 )
 from vgrav.chi2 import chi2_radial, chi2_vertical
 
@@ -107,7 +108,9 @@ FAST_MODELS = [
     ("refracted_gravity", 4),
     ("cdm_nfw",           4),
     ("cdm_einasto",       5),
-    ("hmg",               3),
+    ("hmg",               3),   # s_p-HMG (point-mass approx., Eq.27 vertical) — kept for reference
+    ("hmg_sr",            3),   # s-HMG (standard, E-2D vertical, r_hyd→∞)
+    ("e2d_k2",            4),
 ]
 QUMOND_MODELS = [
     ("qumond_simple",   2, "simple"),
@@ -130,7 +133,9 @@ TABLE_ROWS = [
     ("stvg",              "STVG",                  2,  ""),
     ("cdm_nfw",           "CDM-NFW",               2,  ""),
     ("cdm_einasto",       "CDM-Einasto",           3,  ""),
-    ("hmg",               "HMG (This Work)",       1,  ""),
+    ("hmg",               "$s_\\text{p}\\text{-}$HMG (This Work)", 1,  ""),   # point-mass approx.
+    ("hmg_sr",            "$s\\text{-}$HMG (This Work)",           1,  ""),   # standard
+    ("e2d_k2",            "$sr_\\text{h}\\text{-}$HMG (This Work)", 2,  ""),
 ]
 
 DISC_BOUNDS = (0.70, 1.30)
@@ -450,6 +455,112 @@ def fit_hmg(basis, rv, zv, rr, vv, ss, phi_obs, sig_phi, sig_z,
     return _call(zt, zk) / (N - 3), zt, zk
 
 
+def fit_hmg_sr_table2(basis, rv, zv, rr, vv, ss, phi_obs, sig_phi, sig_z,
+                      fT_r, fK_r, fT_rv, fK_rv):
+    """Fit s-HMG (standard): HMG radial (Eq.37) + E-2D vertical with r_hyd→∞.
+
+    Joint 3-D Nelder-Mead over (zt, zk, log_s). n_params = 3 (2 disc + 1 gravity).
+    This is the canonical single-parameter model. Compare with fit_hmg (s_p-HMG),
+    which uses Eq.27 vertical — a point-mass approximation not promoted in the paper.
+    """
+    R_HYD_INF = 1e9
+    r_line = basis["r_line"]; vc_n = basis["vc_n"]; phi_n = basis["phi_n"]
+    N = len(rr) + len(rv)
+    fT_rv2, fK_rv2 = disc_fractions(rv)
+    vc_n_rv = np.interp(rv, r_line, vc_n)
+
+    def score(p):
+        zt  = float(np.clip(p[0], *DISC_BOUNDS))
+        zk  = float(np.clip(p[1], *DISC_BOUNDS))
+        s   = math.exp(float(p[2]))
+        sc_r = _sc(fT_r,   fK_r,   zt, zk)
+        sc_v = _sc(fT_rv2, fK_rv2, zt, zk)
+        v2_n_rad  = sc_r * vc_n ** 2
+        v2_n_vert = sc_v * vc_n_rv ** 2
+        phi_n_sc  = sc_v * phi_n
+        v2n_fn = lambda r: np.interp(r, r_line, v2_n_rad,
+                                     left=v2_n_rad[0], right=v2_n_rad[-1])
+        try:
+            vc_m  = hmg_radial(v2_n_rad, r_line, s)
+            phi_m = e2d_k2_vertical(rv, zv, v2_n_vert, phi_n_sc, v2n_fn, s, R_HYD_INF)
+            return (chi2_radial(vc_m, r_line, rr, vv, ss) +
+                    chi2_vertical(phi_m, rv, zv, rv, zv, phi_obs, sig_phi, sig_z))
+        except Exception:
+            return 1e10
+
+    starts = [[zt0, zk0, math.log(s0)]
+              for zt0 in (0.9, 1.0, 1.1)
+              for zk0 in (0.9, 1.0, 1.1)
+              for s0  in (0.2, 0.43, 1.0, 2.5)]
+    best = None
+    for x0 in starts:
+        try:
+            res = minimize(score, x0, method="Nelder-Mead",
+                           options={"maxiter": 3000, "xatol": 1e-4, "fatol": 1e-4})
+            if np.isfinite(res.fun) and (best is None or res.fun < best.fun):
+                best = res
+        except Exception:
+            pass
+    if best is None:
+        return float("nan"), float("nan"), float("nan")
+    zt = float(np.clip(best.x[0], *DISC_BOUNDS))
+    zk = float(np.clip(best.x[1], *DISC_BOUNDS))
+    return best.fun / (N - 3), zt, zk
+
+
+def fit_e2d_k2_table2(basis, rv, zv, rr, vv, ss, phi_obs, sig_phi, sig_z,
+                       fT_r, fK_r, fT_rv, fK_rv):
+    """Fit $sr_h$-HMG (e2d_k2) with free disc scales (zt, zk).
+
+    Joint 4-D Nelder-Mead over (zt, zk, log_s, log_r_hyd).
+    n_params = 4 (2 disc + 2 gravity).
+    """
+    r_line = basis["r_line"]; vc_n = basis["vc_n"]; phi_n = basis["phi_n"]
+    N = len(rr) + len(rv)
+    fT_rv2, fK_rv2 = disc_fractions(rv)
+    vc_n_rv = np.interp(rv, r_line, vc_n)
+
+    def score(p):
+        zt  = float(np.clip(p[0], *DISC_BOUNDS))
+        zk  = float(np.clip(p[1], *DISC_BOUNDS))
+        s   = math.exp(float(p[2]))
+        r_h = math.exp(float(p[3]))
+        sc_r = _sc(fT_r,   fK_r,   zt, zk)
+        sc_v = _sc(fT_rv2, fK_rv2, zt, zk)
+        v2_n_rad  = sc_r * vc_n ** 2
+        v2_n_vert = sc_v * vc_n_rv ** 2
+        phi_n_sc  = sc_v * phi_n
+        v2n_fn = lambda r: np.interp(r, r_line, v2_n_rad,
+                                     left=v2_n_rad[0], right=v2_n_rad[-1])
+        try:
+            vc_m  = e2d_k2_radial(v2_n_rad, r_line, v2n_fn, s, r_h)
+            phi_m = e2d_k2_vertical(rv, zv, v2_n_vert, phi_n_sc, v2n_fn, s, r_h)
+            return (chi2_radial(vc_m, r_line, rr, vv, ss) +
+                    chi2_vertical(phi_m, rv, zv, rv, zv, phi_obs, sig_phi, sig_z))
+        except Exception:
+            return 1e10
+
+    starts = [[zt0, zk0, math.log(s0), math.log(r0)]
+              for zt0 in (0.9, 1.0, 1.1)
+              for zk0 in (0.9, 1.0, 1.1)
+              for s0  in (0.43, 2.5)
+              for r0  in (18.0, 1e5)]
+    best = None
+    for x0 in starts:
+        try:
+            res = minimize(score, x0, method="Nelder-Mead",
+                           options={"maxiter": 3000, "xatol": 1e-4, "fatol": 1e-4})
+            if np.isfinite(res.fun) and (best is None or res.fun < best.fun):
+                best = res
+        except Exception:
+            pass
+    if best is None:
+        return float("nan"), float("nan"), float("nan")
+    zt = float(np.clip(best.x[0], *DISC_BOUNDS))
+    zk = float(np.clip(best.x[1], *DISC_BOUNDS))
+    return best.fun / (N - 4), zt, zk
+
+
 # ── Slow model fits ────────────────────────────────────────────────────────────
 
 def fit_qumond(config, kind, basis, cyl_grid,
@@ -543,6 +654,10 @@ def print_latex_table() -> None:
                     and r["model"] == model), None)
         return float(hit["chi2_nu"]) if hit else float("nan")
 
+    def get_n_D(model):
+        hit = next((r for r in rows if r["model"] == model), None)
+        return int(hit["n_D"]) if hit else ""
+
     # chi2_nu matrix: {model_key: {config: value}}
     matrix = {mk: {c: get(c, mk) for c in CONFIGS} for mk, *_ in TABLE_ROWS}
 
@@ -569,19 +684,21 @@ def print_latex_table() -> None:
     print(r"% Columns: Model & $n_\mathcal{D}$ & MI & LW & B2 & MM")
     print()
     for mk, label, k, notes in TABLE_ROWS:
+        n_D = get_n_D(mk)
         col_vals = " & ".join(fmt(matrix[mk][c], mk, c, notes) for c in CONFIGS)
-        print(f"{label} & {k} & {col_vals} \\\\")
+        print(f"{label} & {n_D} & {col_vals} \\\\")
     print()
 
     # Plain-text summary
     print("\nPlain summary (config order: MI  LW  B2  MM):")
-    print(f"  {'Model':<22} {'k':>3}  {'MI':>8} {'LW':>8} {'B2':>8} {'MM':>8}")
+    print(f"  {'Model':<22} {'n_D':>3}  {'MI':>8} {'LW':>8} {'B2':>8} {'MM':>8}")
     print("  " + "-"*58)
     for mk, label, k, _ in TABLE_ROWS:
+        n_D = get_n_D(mk)
         vals = "  ".join(f"{matrix[mk][c]:8.4f}"
                          if np.isfinite(matrix[mk][c]) else "     nan"
                          for c in CONFIGS)
-        print(f"  {label:<22} {k:>3}  {vals}")
+        print(f"  {label:<22} {n_D!s:>3}  {vals}")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -672,6 +789,14 @@ def main() -> None:
                     fT_r, fK_r, fT_rv, fK_rv)
             elif model_key == "hmg":
                 chi2_nu, zt, zk = fit_hmg(
+                    basis, rv, zv, rr_w, vv_w, ss_w, phi_obs, sig_phi, sig_z,
+                    fT_r, fK_r, fT_rv, fK_rv)
+            elif model_key == "hmg_sr":
+                chi2_nu, zt, zk = fit_hmg_sr_table2(
+                    basis, rv, zv, rr_w, vv_w, ss_w, phi_obs, sig_phi, sig_z,
+                    fT_r, fK_r, fT_rv, fK_rv)
+            elif model_key == "e2d_k2":
+                chi2_nu, zt, zk = fit_e2d_k2_table2(
                     basis, rv, zv, rr_w, vv_w, ss_w, phi_obs, sig_phi, sig_z,
                     fT_r, fK_r, fT_rv, fK_rv)
             else:

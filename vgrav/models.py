@@ -257,7 +257,7 @@ def predict_hmg_common_s(
     phi   : [(km/s)²] at obs points
     s_fit : fitted neighbourhood scale
     """
-    from vgrav.chi2 import vertical_force_from_phi
+    from vgrav.chi2 import vertical_score
     from scipy.optimize import minimize_scalar
 
     def score(log_s):
@@ -265,11 +265,8 @@ def predict_hmg_common_s(
         vc_line = hmg_radial(v2_n_radial, r_grid, s)
         phi = hmg_eq27_vertical(rv_obs, zv_obs, v2_n_vert, phi_n, s)
         vc_at = np.interp(rr, r_grid, vc_line)
-        kz = vertical_force_from_phi(phi, rv_obs, zv_obs)
-        sig_eff = np.sqrt(sig_phi ** 2 + (kz * sig_z) ** 2)
         chi_r = float(np.sum(((vc_at - vv) / ss) ** 2))
-        chi_z = float(np.sum(((phi - phi_obs) / sig_eff) ** 2))
-        return chi_r + chi_z
+        return chi_r + vertical_score(phi, rv_obs, zv_obs, phi_obs, sig_phi, sig_z)
 
     res = minimize_scalar(
         score,
@@ -732,7 +729,7 @@ def stvg_disk_accel_and_phi(
             z = zv[i0: i0 + obs_chunk, None]
             dx_v = R - g.x
             dist_zv = np.sqrt(dx_v * dx_v + _gy2 + (z - g.z) ** 2 + eps * eps)
-            dist_z0 = np.sqrt(dx_v * dx_v + _gz2_eps2)
+            dist_z0 = np.sqrt(dx_v * dx_v + _gy2 + _gz2_eps2)
             phi[i0: i0 + obs_chunk] = np.sum(
                 _mcst * (np.exp(-mu * dist_zv) / dist_zv
                          - np.exp(-mu * dist_z0) / dist_z0),
@@ -964,15 +961,13 @@ def _cdm_score(
     mass_func,
 ):
     """Evaluate CDM chi2_total given a spherical halo mass function."""
-    from vgrav.chi2 import vertical_force_from_phi
+    from vgrav.chi2 import vertical_score
     vc_h, phi_h = spherical_vc_and_phi(r_grid, rv_obs, zv_obs, mass_func)
     vc_tot = np.sqrt(np.maximum(vc_n ** 2 + vc_h ** 2, 0.0))
     phi_tot = phi_n + phi_h
     vc_at = np.interp(rr, r_grid, vc_tot)
-    kz = vertical_force_from_phi(phi_tot, rv_obs, zv_obs)
-    sig_eff = np.sqrt(sig_phi ** 2 + (kz * sig_z) ** 2)
     chi_r = float(np.sum(((vc_at - vv) / ss) ** 2))
-    chi_z = float(np.sum(((phi_tot - phi_obs) / sig_eff) ** 2))
+    chi_z = vertical_score(phi_tot, rv_obs, zv_obs, phi_obs, sig_phi, sig_z)
     return chi_r + chi_z, vc_tot, phi_tot
 
 
