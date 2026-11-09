@@ -101,7 +101,7 @@ python scripts/bc_leads_table.py
 To refit the BC models from the baryonic draws (several hours per ensemble):
 
 ```bash
-python scripts/step2_bc.py --full --no-stvg --baryonic-dir outputs/nbar1 --outdir outputs/bc_nbar1
+python scripts/step2_bc.py --full --no-stvg --baryon-band outputs/nbar1/baryon_band_nbar1.csv --baryonic-dir outputs/nbar1 --outdir outputs/bc_nbar1
 ```
 
 ### Mode 2 — Model comparison analysis
