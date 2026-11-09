@@ -157,6 +157,7 @@ Reproduce everything from the bundled data and MC100 draws:
 WORKERS=24 bash scripts/run_likelihood_bic.sh     # ~35 min on 32 cores
 python scripts/likelihood_bic.py --summary         # framework 1 tables
 cat outputs/likelihood_bic_mc100/summary_all.txt  # framework 2 table
+python scripts/likelihood_bic_tables.py > tables/likelihood_bic_tables.tex   # LaTeX rows of Tables 4 and 5
 ```
 
 Each ensemble must be run with its own baryonic band
@@ -253,6 +254,7 @@ release/
     ├── likelihood_bic_stvg.py          STVG fits for likelihood_bic.py
     ├── likelihood_bic_mc100_summary.py BIC summary of the MC100 ensembles
     ├── run_likelihood_bic.sh           Runs the full-likelihood comparison
+    ├── likelihood_bic_tables.py        LaTeX rows of the full-likelihood tables
     └── step4_analyze_hmg.py            HMG competitive analysis
 ```
 
