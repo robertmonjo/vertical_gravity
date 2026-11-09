@@ -42,7 +42,7 @@ from scipy.optimize import minimize
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from vgrav._constants import A0_KMS2_PER_KPC, A_EG_FIXED
+from vgrav._constants import A0_KMS2_PER_KPC, A_EG_FIXED, G
 from vgrav.baryonic import imig_precompute, build_component_grid_from_rho_cyl, _WEIGHT_LOW, _WEIGHT_HIGH  # noqa: F401 (used by likelihood_bic_stvg)
 from vgrav.chi2 import vertical_force_from_phi
 from vgrav.models import (
@@ -67,8 +67,10 @@ CONFIG_LABEL = table2.CONFIG_LABEL
 RHO_THIN_PRIOR = (0.045, 0.003)
 RHO_THICK_PRIOR = (0.00525, 0.0006)
 PHI_SYS_FRACTION = 0.05
-BOUND_SIGMAS = 5.0
-GRID_STEPS = (-2, -1, 0, 1, 2)
+BOUND_SIGMAS = 10.0
+COARSE_STEPS = (-8, -6, -4, -2, 0, 2, 4, 6, 8)
+FINE_STEPS = (-1.0, -0.5, 0.0, 0.5, 1.0)
+A0_VERLINDE = 6.0 * A_EG_FIXED
 FIELDS = ["variant", "config", "model", "k", "N", "m2lnL", "chi2", "chi2_nu", "BIC",
           "zt", "zk", "rho_thin", "rho_thick", "theta"]
 
@@ -80,12 +82,17 @@ ALGEBRAIC_MODELS = {
     "veg_free": ([(LN(10.0), LN(5.0e4))], [[LN(A_EG_FIXED)], [LN(A_EG_FIXED) + 1], [LN(A_EG_FIXED) - 1]]),
     "fr_screened": ([(1e-3, 20.0), (1e-3, 50.0)], [[0.33, 1.0], [0.5, 2.0], [0.2, 0.5], [1.0, 3.0]]),
     "fr_bounded": ([(1e-3, 1.0 / 3.0), (1e-3, 50.0)], [[0.3, 1.0], [0.3, 2.0], [0.2, 0.5], [0.3, 3.0]]),
+    "veg_verlinde": ([], [[]]),
+    "veg_verlinde_free": ([(LN(A0_VERLINDE / 30.0), LN(A0_VERLINDE * 30.0))],
+                          [[LN(A0_VERLINDE)], [LN(A0_VERLINDE) + 1], [LN(A0_VERLINDE) - 1]]),
     "refracted_gravity": ([(1e-4, 1 - 1e-4), (1e-3, 50.0)], [[0.18, 0.7], [0.3, 1.0], [0.1, 0.5], [0.5, 2.0]]),
     "cdm_nfw": ([(-3.0, 1.0), (0.0, 2.3)], [[-0.46, 1.24], [-0.5, 1.0], [-0.3, 1.5], [-0.6, 0.8]]),
     "cdm_einasto": ([(-3.0, 1.0), (0.0, 2.3), (0.1, 15.0)],
                     [[-0.27, 0.99, 0.97], [-0.14, 0.92, 2.0], [-0.30, 1.20, 1.5], [-0.50, 1.50, 0.8]]),
     "hmg_sp": ([(LN(0.05), LN(300.0))], [[LN(0.5)], [LN(2.0)], [LN(5.0)]]),
     "hmg_sr": ([(LN(0.05), LN(300.0))], [[LN(0.5)], [LN(2.0)], [LN(5.0)]]),
+    "hmg_sk2": ([(LN(0.05), LN(300.0)), (LN(1.0), LN(1.0e6))],
+                [[LN(0.43), LN(3.0)], [LN(0.43), LN(17.0)], [LN(2.5), LN(7.0)], [LN(2.5), LN(100.0)]]),
     "e2d_k2": ([(LN(0.05), LN(300.0)), (LN(2.0), LN(1.0e6))],
                [[LN(0.43), LN(18.0)], [LN(2.5), LN(18.0)], [LN(0.43), LN(1e5)], [LN(2.5), LN(1e5)]]),
 }
@@ -123,9 +130,14 @@ def disc_bounds(zt0, zk0):
             (max(zk0 * (1 - BOUND_SIGMAS * fk), 0.05), zk0 * (1 + BOUND_SIGMAS * fk)))
 
 
-def disc_grid(zt0, zk0):
+def disc_point(zt0, zk0, i, j):
+    """Disc factors displaced by i and j prior standard deviations of the thin and thick discs."""
     ft, fk = RHO_THIN_PRIOR[1] / RHO_THIN_PRIOR[0], RHO_THICK_PRIOR[1] / RHO_THICK_PRIOR[0]
-    return [(zt0 * (1 + i * ft), zk0 * (1 + j * fk)) for i in GRID_STEPS for j in GRID_STEPS]
+    return zt0 * (1 + i * ft), max(zk0 * (1 + j * fk), 0.05)
+
+
+def disc_grid(zt0, zk0):
+    return [disc_point(zt0, zk0, i, j) for i in COARSE_STEPS for j in COARSE_STEPS]
 
 
 def score(vc_line, r_line, phi_m, radial, vert):
@@ -154,6 +166,16 @@ def scaled_inputs(config, zt, zk):
     return r_line, v2_rad, v2_vert, sc_v * phi_n
 
 
+def verlinde_mass_function(config, zt, zk, a0):
+    """Apparent dark matter of Verlinde (2016, Eq. 7.40): M_D^2 = a0 r^2/(6G) d(M_B r)/dr."""
+    sph = STATE["spherical"][config]
+    m_cells = sph["w"] * np.maximum(_sc(sph["fT"], sph["fK"], zt, zk), 0.0)
+    m_enc = np.interp(sph["r_edges"], sph["r_sorted"], np.cumsum(m_cells[sph["order"]]))
+    d_mr = np.gradient(m_enc * sph["r_edges"], sph["r_edges"])
+    m_d = np.sqrt(np.maximum(a0 * sph["r_edges"] ** 2 / (6.0 * G) * d_mr, 0.0))
+    return lambda r: np.interp(r, sph["r_edges"], m_d)
+
+
 def predict_algebraic(model, config, theta, zt, zk):
     r_line, v2_rad, v2_vert, phi_sc = scaled_inputs(config, zt, zk)
     rv, zv = STATE["vert"]["rv"], STATE["vert"]["zv"]
@@ -171,6 +193,10 @@ def predict_algebraic(model, config, theta, zt, zk):
         else:
             nu = nu_rg(g_n / A0_KMS2_PER_KPC, theta[0], theta[1])
         return np.sqrt(nu) * vc_sc, np.interp(rv, r_line, nu, left=nu[0], right=nu[-1]) * phi_sc
+    if model in ("veg_verlinde", "veg_verlinde_free"):
+        a0 = A0_VERLINDE if model == "veg_verlinde" else math.exp(theta[0])
+        vc_h, phi_h = spherical_vc_and_phi(r_line, rv, zv, verlinde_mass_function(config, zt, zk, a0))
+        return np.sqrt(v2_rad + vc_h ** 2), phi_sc + phi_h
     if model in ("cdm_nfw", "cdm_einasto"):
         if model == "cdm_nfw":
             rho_s, rs = nfw_density_from_local(theta[0], theta[1])
@@ -187,6 +213,8 @@ def predict_algebraic(model, config, theta, zt, zk):
     if model == "hmg_sr":
         return hmg_radial(v2_rad, r_line, s), e2d_k2_vertical(rv, zv, v2_vert, phi_sc, v2_fn, s, 1e9)
     r_h = math.exp(theta[1])
+    if model == "hmg_sk2":
+        return hmg_radial(v2_rad, r_line, s), e2d_k2_vertical(rv, zv, v2_vert, phi_sc, v2_fn, s, r_h)
     return (e2d_k2_radial(v2_rad, r_line, v2_fn, s, r_h),
             e2d_k2_vertical(rv, zv, v2_vert, phi_sc, v2_fn, s, r_h))
 
@@ -246,14 +274,38 @@ def fit_qumond(task):
     b, grid = STATE["bases"][config], STATE["cyl_grid"]
     fT_c, fK_c = disc_fractions(grid.R)
     best = {v: None for v in RADIAL_VARIANTS}
-    for zt, zk in disc_grid(zt0, zk0):
+    cache = {}
+
+    def evaluate(i, j):
+        if (i, j) in cache:
+            return
+        zt, zk = disc_point(zt0, zk0, i, j)
         rho = _sc(fT_c, fK_c, zt, zk)[:, None] * b["rho_3d"]
         mass = float(np.sum(rho * 2.0 * math.pi * grid.R[:, None] * grid.dR * grid.dz))
         try:
-            vc, phi = predict_qumond_solver(grid, rho, monopole_boundary(grid, mass), b["r_line"],
-                                            STATE["vert"]["rv"], STATE["vert"]["zv"], QUMOND_KINDS[model])
+            cache[(i, j)] = (zt, zk) + tuple(predict_qumond_solver(
+                grid, rho, monopole_boundary(grid, mass), b["r_line"],
+                STATE["vert"]["rv"], STATE["vert"]["zv"], QUMOND_KINDS[model]))
         except Exception:
+            cache[(i, j)] = None
+
+    def penalised(entry, v):
+        zt, zk, vc, phi = entry
+        m2, chi2 = score(vc, b["r_line"], phi, STATE["radial"][v], STATE["vert"])
+        return m2 + prior_term(zt, zk, c_sun), chi2
+
+    for i in COARSE_STEPS:
+        for j in COARSE_STEPS:
+            evaluate(i, j)
+    for v in RADIAL_VARIANTS:
+        ib, jb = min((k for k in cache if cache[k] is not None), key=lambda k: penalised(cache[k], v)[0])
+        for di in FINE_STEPS:
+            for dj in FINE_STEPS:
+                evaluate(ib + di, jb + dj)
+    for (i, j), entry in cache.items():
+        if entry is None:
             continue
+        zt, zk, vc, phi = entry
         for v in RADIAL_VARIANTS:
             m2, chi2 = score(vc, b["r_line"], phi, STATE["radial"][v], STATE["vert"])
             total = m2 + prior_term(zt, zk, c_sun)
@@ -274,7 +326,14 @@ def build_state(configs):
         bases[config] = table2.build_pure_basis(config, grid, precomp, vert["rv"], vert["zv"])
         zt0, c_sun = disc_prior_centre(bases[config]["weights"])
         prior[config] = (zt0, zt0, c_sun)
-    STATE.update(vert=vert, radial=radial, cyl_grid=grid, bases=bases, prior=prior)
+    RR, ZZ = np.meshgrid(grid.R, grid.z, indexing="ij")
+    r_cells = np.sqrt(RR ** 2 + ZZ ** 2).ravel()
+    order = np.argsort(r_cells)
+    fT_cells, fK_cells = disc_fractions(RR.ravel())
+    spherical = {c: dict(w=(bases[c]["rho_3d"] * 2.0 * math.pi * RR * grid.dR * grid.dz).ravel(),
+                         fT=fT_cells, fK=fK_cells, order=order, r_sorted=r_cells[order],
+                         r_edges=np.geomspace(0.05, 400.0, 800)) for c in configs}
+    STATE.update(vert=vert, radial=radial, cyl_grid=grid, bases=bases, prior=prior, spherical=spherical)
     print(f"State built in {time.time() - t0:.1f}s; prior centres "
           + ", ".join(f"{CONFIG_LABEL[c]}: c_sun={prior[c][2]:.3f}" for c in configs), flush=True)
 

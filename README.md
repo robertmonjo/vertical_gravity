@@ -104,6 +104,13 @@ To refit the BC models from the baryonic draws (several hours per ensemble):
 python scripts/step2_bc.py --full --no-stvg --baryon-band outputs/nbar1/baryon_band_nbar1.csv --baryonic-dir outputs/nbar1 --outdir outputs/bc_nbar1
 ```
 
+The s/r_h-HMG curve of Fig. 2 (`outputs/bc_nbar4/model_bc_hmg_sk2_*`) is
+obtained with the same statistic as the other curves of the figure:
+
+```bash
+python scripts/step2_bc.py --full --no-stvg --models hmg_sk2 --baryon-band outputs/nbar4/baryon_band_nbar4.csv --baryonic-dir outputs/nbar4 --outdir outputs/bc_nbar4
+```
+
 ### Full-likelihood model comparison (BIC)
 
 The model comparison uses the likelihood of Wang et al. (2026):
@@ -135,17 +142,23 @@ Two frameworks are provided:
 1. **One fit per baryonic reconstruction** (`scripts/likelihood_bic.py`,
    `scripts/likelihood_bic_stvg.py`). MI, LW, B2 and MM are fitted separately;
    the thin- and thick-disc factors are free for every model, under the priors
-   above. QUMOND uses the 3D Poisson solver on a 5 x 5 disc grid centred on the
-   prior. STVG uses the linearity of the Yukawa term in alpha and in the
-   density: for each mu on a logarithmic grid (19 values, 0.003–3 kpc^-1) the
-   thin-disc, thick-disc, remaining-disc and bulge kernels are computed once,
-   and (z_t, z_k, alpha) are fitted by linear combination.
+   above and within +-10 sigma of their centres. QUMOND is solved with its
+   Poisson equation, so that v_c and Phi_z derive from one potential: a 9 x 9
+   grid of disc factors (steps of 2 sigma) followed by a 5 x 5 refinement
+   (steps of 0.5 sigma) around the best point. STVG uses the linearity of the
+   Yukawa term in alpha and in the density: for each mu on a logarithmic grid
+   (0.003–3 kpc^-1, including 0.04 kpc^-1) the thin-disc, thick-disc,
+   remaining-disc and bulge kernels are computed once, and (z_t, z_k, alpha)
+   are fitted by linear combination.
    Output: `outputs/likelihood_bic/likelihood_bic_fits.csv`
    (columns: variant, config, model, k, N, m2lnL, chi2, chi2_nu, BIC, zt, zk,
    rho_thin, rho_thick, theta) and `outputs/likelihood_bic/summary.txt`.
 2. **Band-consistent MC100 ensembles** (`scripts/step2_bc.py --full-likelihood
    --radial-variant V`). The four cumulative ensembles of Table 3 are refitted
-   draw by draw with the same likelihood (discs fixed by each draw).
+   draw by draw with the same likelihood (discs fixed by each draw), with
+   QUMOND solved (`--no-approx`). `scripts/likelihood_bic_mc100_extra.py` adds
+   STVG with universal parameters and the VEG apparent dark matter, computing
+   each prediction once per draw and scoring it for the five data vectors.
    `scripts/likelihood_bic_mc100_summary.py` gives the median Delta BIC with
    respect to the best model of each draw and the number of draws in which each
    model has the lowest BIC. Output: `outputs/likelihood_bic_mc100/summary_<variant>.txt`
@@ -154,11 +167,14 @@ Two frameworks are provided:
 Reproduce everything from the bundled data and MC100 draws:
 
 ```bash
-WORKERS=24 bash scripts/run_likelihood_bic.sh     # ~35 min on 32 cores
-python scripts/likelihood_bic.py --summary         # framework 1 tables
+WORKERS=24 bash scripts/run_likelihood_bic.sh     # ~80 min on 32 cores
+cat outputs/likelihood_bic/summary.txt             # framework 1 tables
 cat outputs/likelihood_bic_mc100/summary_all.txt  # framework 2 table
-python scripts/likelihood_bic_tables.py > tables/likelihood_bic_tables.tex   # LaTeX rows of Tables 4 and 5
 ```
+
+The launcher also writes `tables/likelihood_bic_tables.tex`, the rows of
+Tables 4 and 5 of the paper. Both tables list only the models with a physical
+implementation; the rows of the remaining keys stay in the CSV files.
 
 Each ensemble must be run with its own baryonic band
 (`--baryon-band outputs/nbar<n>/baryon_band_nbar<n>.csv`); `run_likelihood_bic.sh`
@@ -170,9 +186,24 @@ row holds `-2 ln L_vert`; `likelihood_setup.json` stores N and the radial
 `delta_sc`; `fr_bounded` is the same function with `delta_sc <= 1/3`, the
 largest enhancement of the unscreened force in metric f(R) gravity (4/3).
 
-Model keys: `hmg_k1` (step2_bc) and `hmg_sp` (likelihood_bic) are s-HMG;
-`e2d_k2` is sr_h-HMG; `mond_*` (step2_bc) and `qumond_*` (likelihood_bic) are
-the QUMOND interpolation functions.
+Model keys:
+
+| Key | Model | Free gravity parameters |
+|---|---|---|
+| `hmg_k1` (step2_bc), `hmg_sp` (likelihood_bic) | s-HMG | s |
+| `hmg_sk2` | s/r_h-HMG: HMG radial field, E-2D vertical potential with r_h | s, r_h |
+| `e2d_k2` | sr_h-HMG | s, r_h |
+| `mond_*` (step2_bc), `qumond_*` (likelihood_bic) | QUMOND, Simple, Standard and MLS interpolation functions, solved | none |
+| `veg_verlinde` | apparent dark matter of Verlinde (2016, Eq. 7.40), `M_D^2 = a0 r^2/(6G) d(M_B r)/dr`, `a0 = c H0`, added as a spherical halo | none |
+| `veg_verlinde_free` | the same with `a0` free | a0 |
+| `stvg_std` | STVG with `alpha = 8.89`, `mu = 0.04 kpc^-1` (Moffat & Rahvar 2013) | none |
+| `fr_bounded` | f(R)-type interpolation function `nu = 1 + delta_sc exp(-x/x_c)` with `delta_sc <= 1/3` | delta_sc, x_c |
+| `refracted_gravity` | algebraic refracted-gravity prescription `nu = 1/eps(x)` | eps_inf, x_c |
+| `cdm_nfw`, `cdm_einasto` | CDM haloes | 2 (NFW), 3 (Einasto) |
+
+`veg_fixed`, `veg_free`, `fr_screened` (amplitude unbounded), `stvg` (alpha and
+mu free) and `hmg_sr` are kept in the CSV files for comparison with the earlier
+fits of Table 2.
 
 ### Mode 2 — Model comparison analysis
 
@@ -256,6 +287,7 @@ release/
     ├── bc_leads_table.py               Table 3 (chi2_nu percentiles and leads)
     ├── likelihood_bic.py               Full-likelihood fits per reconstruction
     ├── likelihood_bic_stvg.py          STVG fits for likelihood_bic.py
+    ├── likelihood_bic_mc100_extra.py   STVG (universal) and VEG fits of the MC100 ensembles
     ├── likelihood_bic_mc100_summary.py BIC summary of the MC100 ensembles
     ├── run_likelihood_bic.sh           Runs the full-likelihood comparison
     ├── likelihood_bic_tables.py        LaTeX rows of the full-likelihood tables
@@ -350,8 +382,9 @@ total mass variation.  Seed: 20260607.
 | `stvg` | STVG | 2 | Yukawa extra force, α, μ free |
 | `cdm_nfw` | CDM NFW | 2 | NFW halo, local DM density fit |
 | `cdm_einasto` | CDM Einasto | 3 | Einasto halo, α, ρ_s, r_s free |
-| `hmg_k1` | s-HMG (This Work) | 1 | single neighbourhood scale s; radial+vertical |
-| `e2d_k2` | sr_h-HMG (This Work) | 2 | neighbourhood scale s and external-regime radius r_h |
+| `hmg_k1` | s-HMG (This Work) | 1 | single vicinity scale s; radial+vertical |
+| `hmg_sk2` | s/r_h-HMG (This Work) | 2 | HMG radial field and E-2D vertical potential, vicinity scale s and radius r_h |
+| `e2d_k2` | sr_h-HMG (This Work) | 2 | vicinity scale s and external-regime radius r_h |
 | `fr_screened` | f(R) screened | 2 | ν = 1 + δ·exp(−x/xc) |
 | `refracted_gravity` | Refracted Gravity | 2 | ε(x) screening function |
 
@@ -368,9 +401,8 @@ If you use this package, please cite:
   author  = {Monjo, Robert and Sasi, A. E.},
   title   = {Radial--vertical gravity decoupling in the {Milky Way}:
              modified gravity and dark matter tests using {Gaia DR3}},
-  journal = {Astronomy \& Astrophysics},
   year    = {2026},
-  note    = {submitted},
+  note    = {in preparation},
 }
 ```
 

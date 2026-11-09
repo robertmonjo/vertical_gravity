@@ -25,20 +25,22 @@ CONFIGS = ["mcgaugh_imig", "lian_wang", "de_salas", "mcmillan"]
 ROWS_A = [
     ("baryonic", "Baryonic Newtonian"), ("qumond_simple", "QUMOND Simple"),
     ("qumond_standard", "QUMOND Standard"), ("qumond_mls", "QUMOND MLS"),
-    ("veg_fixed", "VEG original"), ("veg_free", r"VEG free $a_{\rm EG}$"),
+    ("veg_verlinde", r"VEG ($a_0=cH_0$)"), ("veg_verlinde_free", r"VEG free $a_0$"),
     ("fr_bounded", r"$f(\mathcal{R})$ ($\delta_{\rm sc}\le1/3$)"),
-    ("refracted_gravity", "ReG"), ("stvg", "STVG"),
+    ("refracted_gravity", "ReG"), ("stvg_std", "STVG (universal)"),
     ("cdm_nfw", "CDM-NFW"), ("cdm_einasto", "CDM-Einasto"),
-    ("hmg_sp", r"$s\text{-}$HMG (This Work)"), ("e2d_k2", r"$sr_\text{h}\text{-}$HMG (This Work)"),
+    ("hmg_sp", r"$s\text{-}$HMG (This Work)"), ("hmg_sk2", r"$s/r_\text{h}\text{-}$HMG (This Work)"),
+    ("e2d_k2", r"$sr_\text{h}\text{-}$HMG (This Work)"),
 ]
 ROWS_B = [
     ("baryonic", "Baryonic Newtonian", 0), ("mond_simple", "QUMOND Simple", 0),
     ("mond_standard", "QUMOND Standard", 0), ("mond_rar", "QUMOND MLS", 0),
-    ("veg_fixed", "VEG original", 0), ("veg_free", r"VEG free $a_{\rm EG}$", 1),
+    ("veg_verlinde", r"VEG ($a_0=cH_0$)", 0), ("veg_verlinde_free", r"VEG free $a_0$", 1),
     ("fr_bounded", r"$f(\mathcal{R})$ ($\delta_{\rm sc}\le1/3$)", 2),
-    ("refracted_gravity", "ReG", 2),
+    ("refracted_gravity", "ReG", 2), ("stvg_std", "STVG (universal)", 0),
     ("cdm_nfw", "CDM-NFW", 2), ("cdm_einasto", "CDM-Einasto", 3),
-    ("hmg_k1", r"$s\text{-}$HMG (This Work)", 1), ("e2d_k2", r"$sr_\text{h}\text{-}$HMG (This Work)", 2),
+    ("hmg_k1", r"$s\text{-}$HMG (This Work)", 1), ("hmg_sk2", r"$s/r_\text{h}\text{-}$HMG (This Work)", 2),
+    ("e2d_k2", r"$sr_\text{h}\text{-}$HMG (This Work)", 2),
 ]
 
 
@@ -49,7 +51,8 @@ def fmt(x: float) -> str:
 def table_a(variant: str) -> None:
     rows = [r for r in csv.DictReader(open(ROOT / "outputs/likelihood_bic/likelihood_bic_fits.csv", encoding="utf-8"))
             if r["variant"] == variant]
-    best = {c: min(float(r["BIC"]) for r in rows if r["config"] == c) for c in CONFIGS}
+    shown = {key for key, _ in ROWS_A}
+    best = {c: min(float(r["BIC"]) for r in rows if r["config"] == c and r["model"] in shown) for c in CONFIGS}
     print(f"% Table A, variant {variant}: chi2_nu & Delta BIC per reconstruction (MI, LW, B2, MM)")
     for key, label in ROWS_A:
         cells, k = [], None
@@ -71,7 +74,7 @@ def table_b(variant: str) -> None:
     for n in (1, 2, 3, 4):
         path = ROOT / f"outputs/likelihood_bic_mc100/{variant}/bc_nbar{n}/bic_per_draw.csv"
         rows = list(csv.DictReader(open(path, encoding="utf-8")))
-        keys = [k for k in rows[0] if k != "draw"]
+        keys = [k for k, _, _ in ROWS_B if k in rows[0]]
         bic = {k: np.array([float(r[k]) for r in rows]) for k in keys}
         stack = np.vstack([bic[k] for k in keys])
         data.append((keys, bic, stack.min(axis=0), np.argmin(stack, axis=0)))

@@ -56,6 +56,7 @@ BC_KEY_MAP: dict[str, str] = {
     "hmg_sp":            "hmg_k1",   # s_p-HMG (point-mass approx., not standard)
     "hmg_sr":            "hmg_sr",   # s-HMG (standard)
     "e2d_k2":            "e2d_k2",
+    "hmg_sk2":           "hmg_sk2",
     "fr_screened":       "fr_screened",
     "refracted_gravity": "refracted_gravity",
 }
@@ -75,6 +76,7 @@ MODEL_SPECS: list[tuple[str, str, int]] = [
     ("hmg_sp",            "s_p-HMG (This Work)",  1),   # point-mass approx., not promoted
     ("hmg_sr",            "s-HMG (This Work)",    1),   # standard (E-2D vertical, r_hyd→∞)
     ("e2d_k2",            "HMG 2p (This Work)",   2),
+    ("hmg_sk2",           "s/r_h-HMG (This Work)", 2),
     ("fr_screened",       "f(R) screened",         2),
     ("refracted_gravity", "Refracted Gravity",     2),
 ]

@@ -98,6 +98,7 @@ MODEL_K = {
     "hmg_k1": 1,
     "hmg_sr": 1,
     "e2d_k2": 2,
+    "hmg_sk2": 2,
     "fr_screened": 2, "fr_bounded": 2, "refracted_gravity": 2,
     "cdm_nfw": 2, "cdm_einasto": 3,
     "stvg": 2,
@@ -155,6 +156,38 @@ def _write_model_csvs(out_dir: Path, key: str, r_grid, rz_grid, rad_curves,
 # ── Per-draw fitters (identical to step2 but accept v_n_rad, not vc_n) ───────
 # v_n_rad = band draw interpolated to r_grid = baryonic v_N for radial term.
 # phi_n   = Poisson vertical potential (paired with this draw via step1).
+
+def _fit_hmg_sk2(r_grid, v_n_rad, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, sig_phi, sig_z):
+    """s/r_h-HMG: HMG radial profile with s, E-2D vertical potential with the same s and r_h."""
+    from vgrav.models import hmg_radial, e2d_k2_vertical
+    v2_n_rad = v_n_rad ** 2
+    v2_n_vert = np.interp(rv_obs, r_grid, vc_n) ** 2
+    v2n_fn = lambda r: np.interp(r, r_grid, v2_n_rad, left=v2_n_rad[0], right=v2_n_rad[-1])
+
+    def score(t):
+        s, r_h = math.exp(float(t[0])), math.exp(float(t[1]))
+        try:
+            vc_m = hmg_radial(v2_n_rad, r_grid, s)
+            phi_m = e2d_k2_vertical(rv_obs, zv_obs, v2_n_vert, phi_n, v2n_fn, s, r_h)
+            return (chi2_radial(vc_m, r_grid, rr, vv, ss)
+                    + chi2_vertical(phi_m, rv_obs, zv_obs, rv_obs, zv_obs, phi_obs, sig_phi, sig_z))
+        except Exception:
+            return 1e10
+
+    best = None
+    for x0 in [(math.log(s0), math.log(r0)) for s0 in (0.43, 2.5) for r0 in (3.0, 7.0, 17.0, 100.0)]:
+        try:
+            res = minimize(score, x0, method="Nelder-Mead",
+                           options={"maxiter": 4000, "xatol": 1e-5, "fatol": 1e-5})
+            if best is None or res.fun < best.fun:
+                best = res
+        except Exception:
+            pass
+    s_opt = math.exp(float(best.x[0])) if best is not None else 2.5
+    r_h_opt = math.exp(float(best.x[1])) if best is not None else 5.0
+    return (hmg_radial(v2_n_rad, r_grid, s_opt),
+            e2d_k2_vertical(rv_obs, zv_obs, v2_n_vert, phi_n, v2n_fn, s_opt, r_h_opt), s_opt, r_h_opt)
+
 
 def _fit_fr(r_grid, v_n_rad, vc_n, phi_n, rv_obs, zv_obs, rr, vv, ss, phi_obs, sig_phi, sig_z,
             delta_max=None):
@@ -404,6 +437,7 @@ def _run_full(out_dir: Path, band_path: Path | None, baryonic_dir: Path,
         ("hmg_k1",            1, "hmg_sp"),   # s_p-HMG (point-mass approx., not standard)
         ("hmg_sr",            1, "hmg_sr"),   # s-HMG (standard, E-2D vertical)
         ("e2d_k2",            2, "e2d_k2"),
+        ("hmg_sk2",           2, "hmg_sk2"),  # s/r_h-HMG: HMG radial, E-2D vertical with r_h
         ("fr_screened",       2, "fr"),
         ("fr_bounded",        2, "fr_bounded"),   # f(R) enhancement bound: delta <= 1/3
         ("refracted_gravity", 2, "rg"),
@@ -514,6 +548,11 @@ def _run_full(out_dir: Path, band_path: Path | None, baryonic_dir: Path,
             elif tag == "e2d_k2":
                 vc_m, phi_m, _s, _rh = _fit_e2d_k2(r_grid, v_n_rad, vc_n, phi_n, rv_obs, zv_obs,
                                                      rr, vv, ss, phi_obs, sig_phi, sig_z)
+                params_list.append({"draw_id": i + 1, "draw_label": f"b{i+1}", "s": _s, "r_hyd": _rh})
+
+            elif tag == "hmg_sk2":
+                vc_m, phi_m, _s, _rh = _fit_hmg_sk2(r_grid, v_n_rad, vc_n, phi_n, rv_obs, zv_obs,
+                                                    rr, vv, ss, phi_obs, sig_phi, sig_z)
                 params_list.append({"draw_id": i + 1, "draw_label": f"b{i+1}", "s": _s, "r_hyd": _rh})
 
             elif tag == "fr":

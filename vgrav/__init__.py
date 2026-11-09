@@ -78,6 +78,7 @@ from vgrav.models import (
     einasto_mass,
     einasto_density_from_local,
     predict_mond_proxy,
+    predict_hmg_common_s,
     predict_hmg_proxy,
     predict_nu_proxy,
     predict_cdm_nfw,
@@ -103,7 +104,7 @@ __all__ = [
     # models
     "nu_mond", "hmg_factor", "nu_fr", "nu_rg", "nu_eg",
     "nfw_mass", "nfw_density_from_local", "einasto_mass", "einasto_density_from_local",
-    "predict_mond_proxy", "predict_hmg_proxy", "predict_nu_proxy",
+    "predict_mond_proxy", "predict_hmg_common_s", "predict_hmg_proxy", "predict_nu_proxy",
     "predict_cdm_nfw", "predict_cdm_einasto",
     "predict_stvg", "predict_qumond_solver",
     # figures

@@ -45,6 +45,7 @@ _MODEL_STYLES: dict[str, tuple] = {
     "hmg_sp":             (r"$s_{\rm p}$-HMG (This Work)",    "#8de050", "-",  2.800),   # point-mass approx.
     "hmg_sr":             (r"$s$-HMG (This Work)",            "#4de028", "-",  2.800),   # standard
     "e2d_k2":             (r"$sr_{\rm h}$-HMG (This Work)", "#4de028", "-",  3.300),
+    "hmg_sk2":            (r"$s/r_{\rm h}$-HMG (This Work)", "#0b7a3e", "-",  2.800),
 }
 _BARY_COLOR = "#6baed6"
 
