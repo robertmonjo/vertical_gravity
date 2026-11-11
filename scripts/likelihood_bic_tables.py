@@ -94,7 +94,7 @@ def table_b(variant: str) -> None:
             cell = r"\textbf{0}" if p84 == 0 else f"${fmt(p50)}^{{+{fmt(p84 - p50)}}}_{{-{fmt(p50 - p16)}}}$"
             cells.append(cell + (rf"\ ({wins})" if wins else ""))
             cells_m.append(r"\textbf{0}" if marg[key] == 0 else fmt(marg[key]))
-        print(f"{label} & {k} & " + " & ".join(cells + cells_m) + r" \\")
+        print(f"{label} & {k} & " + " & ".join(cells + [" "] + cells_m) + r" \\")
         if key == "baryonic":
             print(r"\hline")
 
