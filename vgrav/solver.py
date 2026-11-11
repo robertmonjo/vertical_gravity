@@ -122,6 +122,102 @@ def solve_axisymmetric(
     return sol.reshape((nR, nz))
 
 
+def axisymmetric_operator(
+    grid: CylGrid,
+    eps: np.ndarray | None = None,
+    mu: float = 0.0,
+):
+    """Factorised operator for ∇·(ε∇φ) − μ²φ = rhs with Dirichlet boundaries.
+
+    The divergence is written in conservative form,
+        (1/R) ∂_R(R ε ∂_R φ) + ∂_z(ε ∂_z φ),
+    with ε at the cell faces taken as the mean of the two adjacent nodes, so that
+    the flux of ε∇φ is continuous across the variations of ε. For ε ≡ 1 the
+    stencil is that of solve_axisymmetric. The grid must start at R = 0.
+
+    Parameters
+    ----------
+    grid : CylGrid with uniform spacing and R[0] = 0.
+    eps  : coefficient on the grid nodes (default 1).
+    mu   : screening constant [1/kpc] (0 for Poisson).
+
+    Returns
+    -------
+    solve(rhs, boundary) -> phi, both of shape grid.shape. The boundary rows are
+    the outer radius, the axis-free edges z = ±z_max, as in solve_axisymmetric.
+    """
+    from scipy.sparse import csc_matrix
+    from scipy.sparse.linalg import splu
+
+    nR, nz = grid.shape
+    if grid.R[0] != 0.0:
+        raise ValueError("axisymmetric_operator requires a grid starting at R = 0")
+    dR, dz = grid.dR, grid.dz
+    e = np.ones((nR, nz)) if eps is None else np.asarray(eps, dtype=float)
+    e_r = 0.5 * (e[1:, :] + e[:-1, :])          # faces (i+1/2, j), shape (nR-1, nz)
+    e_z = 0.5 * (e[:, 1:] + e[:, :-1])          # faces (i, j+1/2), shape (nR, nz-1)
+    R = grid.R
+    idx = np.arange(nR * nz).reshape(nR, nz)
+
+    boundary = np.zeros((nR, nz), dtype=bool)
+    boundary[-1, :] = True
+    boundary[:, 0] = True
+    boundary[:, -1] = True
+    interior = ~boundary
+
+    rows, cols, vals = [], [], []
+
+    def add(mask, col_idx, values):
+        rows.append(idx[mask])
+        cols.append(col_idx[mask])
+        vals.append(values[mask])
+
+    # vertical fluxes (all interior nodes, including the axis)
+    cz_p = np.zeros((nR, nz))
+    cz_m = np.zeros((nR, nz))
+    cz_p[:, :-1] = e_z / dz ** 2
+    cz_m[:, 1:] = e_z / dz ** 2
+    # radial fluxes
+    cr_p = np.zeros((nR, nz))
+    cr_m = np.zeros((nR, nz))
+    Ri = R[1:-1, None]
+    cr_p[1:-1, :] = (Ri + 0.5 * dR) * e_r[1:, :] / (Ri * dR ** 2)
+    cr_m[1:-1, :] = (Ri - 0.5 * dR) * e_r[:-1, :] / (Ri * dR ** 2)
+    cr_p[0, :] = 4.0 * e_r[0, :] / dR ** 2      # axis: flux through the cylinder of radius dR/2
+
+    shift_rp = np.zeros_like(idx); shift_rp[:-1] = idx[1:]
+    shift_rm = np.zeros_like(idx); shift_rm[1:] = idx[:-1]
+    shift_zp = np.zeros_like(idx); shift_zp[:, :-1] = idx[:, 1:]
+    shift_zm = np.zeros_like(idx); shift_zm[:, 1:] = idx[:, :-1]
+
+    diag = -(cr_p + cr_m + cz_p + cz_m) - mu * mu
+    add(interior, idx, diag)
+    add(interior, shift_rp, cr_p)
+    add(interior & (np.arange(nR)[:, None] > 0), shift_rm, cr_m)
+    add(interior, shift_zp, cz_p)
+    add(interior, shift_zm, cz_m)
+    add(boundary, idx, np.ones((nR, nz)))
+
+    n = nR * nz
+    mat = csc_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(n, n))
+    lu = splu(mat)
+    bmask = boundary.ravel()
+
+    def solve(rhs: np.ndarray, boundary_values: np.ndarray) -> np.ndarray:
+        vec = np.asarray(rhs, dtype=float).ravel().copy()
+        vec[bmask] = np.asarray(boundary_values, dtype=float).ravel()[bmask]
+        return lu.solve(vec).reshape((nR, nz))
+
+    return solve
+
+
+def yukawa_boundary(grid: CylGrid, mass: float, mu: float) -> np.ndarray:
+    """Dirichlet boundary values φ = −GM e^{−μr}/r (screened monopole)."""
+    RR, ZZ = np.meshgrid(grid.R, grid.z, indexing="ij")
+    rr = np.maximum(np.sqrt(RR * RR + ZZ * ZZ), 1e-6)
+    return -G * mass * np.exp(-mu * rr) / rr
+
+
 def gradients(grid: CylGrid, phi: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Return (∂φ/∂R, ∂φ/∂z) on the grid using second-order finite differences."""
     dR = np.gradient(phi, grid.dR, axis=0, edge_order=2)

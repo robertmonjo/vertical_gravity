@@ -5,6 +5,8 @@ Table A: one fit per baryonic reconstruction (outputs/likelihood_bic/likelihood_
 Table B: MC100 ensembles (outputs/likelihood_bic_mc100/<variant>/bc_nbar<n>/bic_per_draw.csv);
          median Delta BIC with respect to the best model of each draw (p16, p84) and
          the number of draws in which the model has the lowest BIC.
+Table C: MC100 ensembles; Delta BIC marginalised over the baryonic draws,
+         -2 ln[(1/N) sum_i exp(-BIC_i/2)] relative to the best model.
 
 Usage
 -----
@@ -27,7 +29,7 @@ ROWS_A = [
     ("qumond_standard", "QUMOND Standard"), ("qumond_mls", "QUMOND MLS"),
     ("veg_verlinde", r"VEG ($a_0=cH_0$)"), ("veg_verlinde_free", r"VEG free $a_0$"),
     ("fr_bounded", r"$f(\mathcal{R})$ ($\delta_{\rm sc}\le1/3$)"),
-    ("refracted_gravity", "ReG"), ("stvg_std", "STVG (universal)"),
+    ("reg_dms", "ReG (DiskMass)"), ("reg_free", "ReG free"), ("stvg_std", "STVG (universal)"),
     ("cdm_nfw", "CDM-NFW"), ("cdm_einasto", "CDM-Einasto"),
     ("hmg_sp", r"$s\text{-}$HMG (This Work)"), ("hmg_sk2", r"$s/r_\text{h}\text{-}$HMG (This Work)"),
     ("e2d_k2", r"$sr_\text{h}\text{-}$HMG (This Work)"),
@@ -37,7 +39,7 @@ ROWS_B = [
     ("mond_standard", "QUMOND Standard", 0), ("mond_rar", "QUMOND MLS", 0),
     ("veg_verlinde", r"VEG ($a_0=cH_0$)", 0), ("veg_verlinde_free", r"VEG free $a_0$", 1),
     ("fr_bounded", r"$f(\mathcal{R})$ ($\delta_{\rm sc}\le1/3$)", 2),
-    ("refracted_gravity", "ReG", 2), ("stvg_std", "STVG (universal)", 0),
+    ("reg_dms", "ReG (DiskMass)", 0), ("stvg_std", "STVG (universal)", 0),
     ("cdm_nfw", "CDM-NFW", 2), ("cdm_einasto", "CDM-Einasto", 3),
     ("hmg_k1", r"$s\text{-}$HMG (This Work)", 1), ("hmg_sk2", r"$s/r_\text{h}\text{-}$HMG (This Work)", 2),
     ("e2d_k2", r"$sr_\text{h}\text{-}$HMG (This Work)", 2),
@@ -89,6 +91,25 @@ def table_b(variant: str) -> None:
         print(f"{label} & {k} & " + " & ".join(cells) + r" \\")
 
 
+def table_c(variant: str) -> None:
+    """Delta BIC marginalised over the 100 draws of each ensemble (likelihood_bic_marginal.py)."""
+    print(f"% Table C, variant {variant}: Delta BIC marginalised over the baryonic draws, per ensemble")
+    marg = []
+    for n in (1, 2, 3, 4):
+        path = ROOT / f"outputs/likelihood_bic_mc100/{variant}/bc_nbar{n}/bic_per_draw.csv"
+        rows = list(csv.DictReader(open(path, encoding="utf-8")))
+        keys = [k for k, _, _ in ROWS_B if k in rows[0]]
+        m = {}
+        for key in keys:
+            b = np.array([float(r[key]) for r in rows])
+            m[key] = float(b.min() - 2.0 * math.log(np.mean(np.exp(-0.5 * (b - b.min())))))
+        best = min(m.values())
+        marg.append({k: v - best for k, v in m.items()})
+    for key, label, k in ROWS_B:
+        cells = [r"\textbf{0}" if d[key] == 0 else fmt(d[key]) for d in marg]
+        print(f"{label} & {k} & " + " & ".join(cells) + r" \\")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--variant", default="all")
@@ -96,6 +117,8 @@ def main() -> None:
     table_a(args.variant)
     print()
     table_b(args.variant)
+    print()
+    table_c(args.variant)
 
 
 if __name__ == "__main__":

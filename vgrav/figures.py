@@ -135,6 +135,10 @@ def plot_fig2(
     dpi: int = 220,
     model_keys: Optional[list[str]] = None,
     hmg_1fam_outputs_dir: Optional[Path] = None,
+    label_overrides: Optional[dict[str, str]] = None,
+    legend_values: Optional[dict[str, float]] = None,
+    legend_symbol: str = r"\chi^2_{\nu}",
+    legend_fmt: str = ".2f",
 ) -> plt.Figure:
     """Reproduce Fig. 2: rotation curve + 9 vertical potential panels.
 
@@ -146,6 +150,11 @@ def plot_fig2(
     output_path : save figure here if given (e.g. "fig2.png").
     dpi         : figure resolution.
     model_keys  : subset of model keys to plot (default: all available).
+    label_overrides : model key -> legend label replacing the default one.
+    legend_values   : model key -> value shown in the legend instead of the median
+                      chi2_nu of mc100_chi2_all_models.csv; the key "hmg_1fam"
+                      gives the value of the s-HMG+Imig overlay.
+    legend_symbol, legend_fmt : symbol and number format of the legend values.
 
     Returns
     -------
@@ -255,6 +264,10 @@ def plot_fig2(
             for _row in csv.DictReader(_fh):
                 _chi2_by_key.setdefault(_row["model_key"], []).append(float(_row["chi2_nu"]))
         _chi2_med = {k: float(np.median(v)) for k, v in _chi2_by_key.items()}
+    if legend_values is not None:
+        _chi2_med = dict(legend_values)
+    _labels = {k: v[0] for k, v in _MODEL_STYLES.items()}
+    _labels.update(label_overrides or {})
 
     # VEG fixed is in Table 2 but not shown in the figure
     _FIG2_SKIP = {"veg_fixed"}
@@ -277,12 +290,13 @@ def plot_fig2(
     for key, dat in available.items():
         if key in _FIG2_SKIP:
             continue
-        label_base, color, ls, lw = _MODEL_STYLES[key]
+        _, color, ls, lw = _MODEL_STYLES[key]
+        label_base = _labels[key]
         med = gaussian_filter1d(_pct(dat["r_draws"], 50), sigma=4)
         p16 = gaussian_filter1d(_pct(dat["r_draws"], 16), sigma=4)
         p84 = gaussian_filter1d(_pct(dat["r_draws"], 84), sigma=4)
         ax_top.fill_between(dat["r_coords"], p16, p84, color=color, alpha=0.08, lw=0)
-        chi2_sfx = (f" ($\\chi^2_{{\\nu}}={_chi2_med[key]:.2f}$)"
+        chi2_sfx = (f" (${legend_symbol}={_chi2_med[key]:{legend_fmt}}$)"
                     if key in _chi2_med and key != "baryonic" else "")
         h, = ax_top.plot(dat["r_coords"], med, color=color, ls=ls, lw=lw,
                          label=label_base + chi2_sfx, zorder=3, alpha=0.82)
@@ -299,7 +313,10 @@ def plot_fig2(
         ax_top.fill_between(hmg_1fam_data["r_coords"], _h1_p16, _h1_p84,
                             color=_h1_color, alpha=0.08, lw=0)
         _h1_chi2_sfx = ""
-        if "hmg_sp" in _chi2_med:
+        if legend_values is not None:
+            if "hmg_1fam" in legend_values:
+                _h1_chi2_sfx = f" (${legend_symbol}={legend_values['hmg_1fam']:{legend_fmt}}$)"
+        elif "hmg_sp" in _chi2_med:
             _h1_chi2_csv = Path(hmg_1fam_outputs_dir) / "mc100_chi2_all_models.csv"
             if _h1_chi2_csv.exists():
                 _h1_vals = []

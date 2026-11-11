@@ -15,7 +15,8 @@
 #         -> tables/likelihood_bic_tables.tex
 #
 # Requires the MC100 baryonic draws in outputs/nbar{1..4}/ (step1_build_baryonic_mc100.py).
-# Runtime on 32 cores: (a) ~15 min, STVG ~20 min, (b) ~20 min, (b) STVG and VEG ~25 min.
+# Runtime on 32 cores: (a) ~1.5 h (refracted gravity with free parameters), STVG ~1 min,
+# (b) ~20 min, (b) STVG, refracted gravity and VEG ~5 min.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
@@ -43,3 +44,4 @@ for v in $VARIANTS; do
 done
 python scripts/likelihood_bic.py --summary > outputs/likelihood_bic/summary.txt
 python scripts/likelihood_bic_tables.py --variant all > tables/likelihood_bic_tables.tex
+python scripts/likelihood_bic_marginal.py --variant all > outputs/likelihood_bic_mc100/marginal_all.txt

@@ -43,12 +43,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from vgrav._constants import A0_KMS2_PER_KPC, A_EG_FIXED, G
-from vgrav.baryonic import imig_precompute, build_component_grid_from_rho_cyl, _WEIGHT_LOW, _WEIGHT_HIGH  # noqa: F401 (used by likelihood_bic_stvg)
+from vgrav.baryonic import imig_precompute, _WEIGHT_LOW, _WEIGHT_HIGH
 from vgrav.chi2 import vertical_force_from_phi
 from vgrav.models import (
     einasto_density_from_local, einasto_mass, nfw_density_from_local, nfw_mass,
     spherical_vc_and_phi, nu_eg, nu_fr, nu_rg, hmg_radial, hmg_eq27_vertical,
-    e2d_k2_radial, e2d_k2_vertical, predict_qumond_solver,
+    e2d_k2_radial, e2d_k2_vertical, predict_qumond_solver, predict_refracted_gravity,
 )
 from vgrav.observations import RADIAL_VARIANTS, radial_variant_arrays, vertical_arrays
 from vgrav.solver import make_grid, monopole_boundary
@@ -97,6 +97,12 @@ ALGEBRAIC_MODELS = {
                [[LN(0.43), LN(18.0)], [LN(2.5), LN(18.0)], [LN(0.43), LN(1e5)], [LN(2.5), LN(1e5)]]),
 }
 QUMOND_KINDS = {"qumond_simple": "simple", "qumond_standard": "standard", "qumond_mls": "rar"}
+# Refracted gravity, nabla.[eps(rho) nabla phi] = 4 pi G rho. Universal parameters: joint fit of the
+# 30 DiskMass Survey galaxies (Cesare et al. 2020, Sect. 5): eps0, Q, log10 rho_c [g cm^-3].
+# Free versions: bounds = flat priors of Cesare et al. (2020, Sect. 3).
+REG_DMS = (0.661, 1.79, -24.54)
+REG_BOUNDS = [(0.10, 1.0), (0.01, 2.0), (-27.0, -23.0)]
+REG_MODELS = {"reg_dms": False, "reg_free": True}   # key: free parameters
 
 STATE: dict = {}
 
@@ -268,11 +274,32 @@ def fit_algebraic(task):
     return rows
 
 
+def scaled_density(config, zt, zk):
+    grid = STATE["cyl_grid"]
+    fT_c, fK_c = disc_fractions(grid.R)
+    return _sc(fT_c, fK_c, zt, zk)[:, None] * STATE["bases"][config]["rho_3d"]
+
+
+def solved_prediction(config, model, zt, zk, theta=()):
+    """v_c on r_line and Phi_z at the vertical points for the models solved on the grid."""
+    b, grid = STATE["bases"][config], STATE["cyl_grid"]
+    rho = scaled_density(config, zt, zk)
+    rv, zv = STATE["vert"]["rv"], STATE["vert"]["zv"]
+    if model in QUMOND_KINDS:
+        mass = float(np.sum(rho * 2.0 * math.pi * grid.R[:, None] * grid.dR * grid.dz))
+        return predict_qumond_solver(grid, rho, monopole_boundary(grid, mass), b["r_line"], rv, zv,
+                                     QUMOND_KINDS[model])
+    eps0, q, log_rho_c = tuple(theta) if REG_MODELS[model] else REG_DMS
+    return predict_refracted_gravity(grid, rho, b["r_line"], rv, zv, eps0, q, log_rho_c)
+
+
 def fit_qumond(task):
+    """Models solved on the grid with no free gravity parameter: QUMOND and refracted gravity
+    with the DiskMass parameters. Disc factors on a coarse grid of prior widths, refined
+    around the best point of each radial variant."""
     config, model = task
     zt0, zk0, c_sun = STATE["prior"][config]
-    b, grid = STATE["bases"][config], STATE["cyl_grid"]
-    fT_c, fK_c = disc_fractions(grid.R)
+    b = STATE["bases"][config]
     best = {v: None for v in RADIAL_VARIANTS}
     cache = {}
 
@@ -280,12 +307,8 @@ def fit_qumond(task):
         if (i, j) in cache:
             return
         zt, zk = disc_point(zt0, zk0, i, j)
-        rho = _sc(fT_c, fK_c, zt, zk)[:, None] * b["rho_3d"]
-        mass = float(np.sum(rho * 2.0 * math.pi * grid.R[:, None] * grid.dR * grid.dz))
         try:
-            cache[(i, j)] = (zt, zk) + tuple(predict_qumond_solver(
-                grid, rho, monopole_boundary(grid, mass), b["r_line"],
-                STATE["vert"]["rv"], STATE["vert"]["zv"], QUMOND_KINDS[model]))
+            cache[(i, j)] = (zt, zk) + tuple(solved_prediction(config, model, zt, zk))
         except Exception:
             cache[(i, j)] = None
 
@@ -312,6 +335,35 @@ def fit_qumond(task):
             if best[v] is None or total < best[v][0]:
                 best[v] = (total, chi2, zt, zk)
     return [row(v, config, model, 2, t, c, zt, zk, [], c_sun) for v, (t, c, zt, zk) in best.items()]
+
+
+def fit_reg_free(task):
+    """Refracted gravity with eps0, Q and log10 rho_c free (k = 5), one radial variant."""
+    config, model, variant = task
+    zt0, zk0, c_sun = STATE["prior"][config]
+    r_line = STATE["bases"][config]["r_line"]
+    radial = STATE["radial"][variant]
+    bounds = list(disc_bounds(zt0, zk0)) + REG_BOUNDS
+
+    def objective(p):
+        try:
+            vc, phi = solved_prediction(config, model, p[0], p[1], p[2:])
+            m2, _ = score(vc, r_line, phi, radial, STATE["vert"])
+            value = m2 + prior_term(p[0], p[1], c_sun)
+            return value if np.isfinite(value) else 1e12
+        except Exception:
+            return 1e12
+
+    best = None
+    for g0 in (REG_DMS, (0.3, 1.0, -25.5), (0.9, 0.5, -24.0)):
+        res = minimize(objective, [zt0, zk0, *g0], method="Nelder-Mead", bounds=bounds,
+                       options={"maxfev": 400, "xatol": 1e-3, "fatol": 1e-3})
+        if np.isfinite(res.fun) and (best is None or res.fun < best.fun):
+            best = res
+    p = best.x
+    vc, phi = solved_prediction(config, model, p[0], p[1], p[2:])
+    m2, chi2 = score(vc, r_line, phi, radial, STATE["vert"])
+    return [row(variant, config, model, 5, m2 + prior_term(p[0], p[1], c_sun), chi2, p[0], p[1], p[2:], c_sun)]
 
 
 # ── Driver ────────────────────────────────────────────────────────────────────
@@ -388,11 +440,18 @@ def main():
             write_rows(rows)
             print(f"  [{time.time() - t0:7.1f}s] {rows[0]['config']:<13} {rows[0]['model']:<18} "
                   f"chi2_nu(all)={rows[0]['chi2_nu']}", flush=True)
-        tasks = [(c, m) for c in configs for m in QUMOND_KINDS if not wanted or m in wanted]
+        solved = list(QUMOND_KINDS) + [m for m, free in REG_MODELS.items() if not free]
+        tasks = [(c, m) for c in configs for m in solved if not wanted or m in wanted]
         for rows in pool.imap_unordered(fit_qumond, tasks):
             write_rows(rows)
             print(f"  [{time.time() - t0:7.1f}s] {rows[0]['config']:<13} {rows[0]['model']:<18} "
                   f"chi2_nu(all)={rows[0]['chi2_nu']}", flush=True)
+        tasks = [(c, m, v) for c in configs for m, free in REG_MODELS.items() if free
+                 and (not wanted or m in wanted) for v in RADIAL_VARIANTS]
+        for rows in pool.imap_unordered(fit_reg_free, tasks):
+            write_rows(rows)
+            print(f"  [{time.time() - t0:7.1f}s] {rows[0]['config']:<13} {rows[0]['model']:<18} "
+                  f"{rows[0]['variant']:<18} chi2_nu={rows[0]['chi2_nu']}", flush=True)
     print(f"Total {(time.time() - t0) / 60:.1f} min. Output: {OUT_CSV}")
     summary()
 

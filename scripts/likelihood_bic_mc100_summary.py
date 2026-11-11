@@ -23,9 +23,9 @@ import numpy as np
 K = {"baryonic": 0, "mond_simple": 0, "mond_standard": 0, "mond_rar": 0, "veg_fixed": 0,
      "veg_free": 1, "veg_verlinde": 0, "veg_verlinde_free": 1, "hmg_k1": 1, "hmg_sr": 1, "e2d_k2": 2,
      "hmg_sk2": 2, "fr_screened": 2, "fr_bounded": 2, "refracted_gravity": 2, "cdm_nfw": 2,
-     "cdm_einasto": 3, "stvg": 2, "stvg_std": 0}
+     "cdm_einasto": 3, "stvg": 2, "stvg_std": 0, "reg_dms": 0}
 COMPETITION = ["baryonic", "mond_simple", "mond_standard", "mond_rar", "veg_verlinde", "veg_verlinde_free",
-               "fr_bounded", "refracted_gravity", "stvg_std", "cdm_nfw", "cdm_einasto",
+               "fr_bounded", "reg_dms", "stvg_std", "cdm_nfw", "cdm_einasto",
                "hmg_k1", "hmg_sk2", "e2d_k2"]
 
 

@@ -852,6 +852,173 @@ def predict_stvg(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# STVG and refracted gravity solved on the axisymmetric grid
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_GRID_BLEND = (55.0, 60.0)   # kpc: grid solution → analytic monopole
+
+
+def stvg_grid_kernel(
+    cyl_grid,
+    rho: np.ndarray,
+    mu: float,
+    Rrot: np.ndarray,
+    Rv: np.ndarray,
+    zv: np.ndarray,
+    phi_n_grid: Optional[np.ndarray] = None,
+    yukawa_solve: Optional[Callable] = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """STVG correction per unit alpha from the same density as the Newtonian potential.
+
+    In the weak-field limit of STVG (Moffat & Rahvar 2013) a point mass m has
+        Φ = −G m [1 + α − α e^{−μr}] / r = (1 + α) Φ_N − α Φ_Y,
+    where ∇²Φ_N = 4πGρ and (∇² − μ²)Φ_Y = 4πGρ. Hence
+        Φ_STVG = Φ_N + α D,   D ≡ Φ_N − Φ_Y,
+    and the circular speed is v_c² = v_N² + α R ∂_R D at z = 0. Both potentials are
+    solved on the same grid, so that the cancellation between the Newtonian and the
+    Yukawa terms at r ≪ 1/μ is exact up to discretisation of a smooth field.
+
+    Parameters
+    ----------
+    cyl_grid     : CylGrid starting at R = 0
+    rho          : density on the grid [Msun/kpc^3]
+    mu           : STVG range parameter [1/kpc]
+    Rrot         : radii of the rotation curve [kpc]
+    Rv, zv       : coordinates of the vertical-potential points [kpc]
+    phi_n_grid   : Newtonian potential on the grid (solved here if None)
+    yukawa_solve : factorised operator from axisymmetric_operator(grid, mu=mu)
+
+    Returns
+    -------
+    dv2  : R ∂_R D at z = 0 on Rrot [(km/s)^2]; beyond the grid, the monopole value
+           G M [1 − e^{−μR}(1 + μR)] / R.
+    dphi : D(R, z) − D(R, 0) at (Rv, zv) [(km/s)^2]
+    """
+    from vgrav.solver import (axisymmetric_operator, interp2, monopole_boundary,
+                              phi_difference, yukawa_boundary, gradients, blend_outer)
+
+    rho = np.asarray(rho, dtype=float)
+    mass = float(np.sum(rho * 2.0 * math.pi * cyl_grid.R[:, None] * cyl_grid.dR * cyl_grid.dz))
+    src = 4.0 * math.pi * G * rho
+    if phi_n_grid is None:
+        phi_n_grid = axisymmetric_operator(cyl_grid)(src, monopole_boundary(cyl_grid, mass))
+    if yukawa_solve is None:
+        yukawa_solve = axisymmetric_operator(cyl_grid, mu=mu)
+    phi_y = yukawa_solve(src, yukawa_boundary(cyl_grid, mass, mu))
+    d = phi_n_grid - phi_y
+    d_r, _ = gradients(cyl_grid, d)
+    Rrot = np.asarray(Rrot, dtype=float)
+    inside = np.minimum(Rrot, cyl_grid.R[-1])
+    dv2_in = Rrot * interp2(cyl_grid, d_r, inside, np.zeros_like(inside))
+    r_safe = np.maximum(Rrot, 1e-8)
+    dv2_out = G * mass * (1.0 - np.exp(-mu * r_safe) * (1.0 + mu * r_safe)) / r_safe
+    dv2 = blend_outer(Rrot, dv2_in, dv2_out, *_GRID_BLEND)
+    return dv2, phi_difference(cyl_grid, d, Rv, zv)
+
+
+def refracted_gravity_permittivity(
+    rho: np.ndarray,
+    eps0: float,
+    Q: float,
+    log10_rho_c: float,
+) -> np.ndarray:
+    """Gravitational permittivity of refracted gravity (Cesare et al. 2020, Eq. 5).
+
+        ε(ρ) = ε₀ + (1 − ε₀) · ½ {tanh[ln (ρ/ρ_c)^Q] + 1},
+
+    with ρ_c in g cm^-3 (Matsakos & Diaferio 2016, Eq. 4.1). tanh(Q ln x) is
+    evaluated as (x^{2Q} − 1)/(x^{2Q} + 1), which is finite for ρ = 0 (ε = ε₀).
+
+    rho : density [Msun/kpc^3]
+    """
+    msun_kpc3_in_g_cm3 = 1.98892e33 / (3.085677581e21) ** 3
+    x = np.maximum(np.asarray(rho, dtype=float), 0.0) * msun_kpc3_in_g_cm3 / 10.0 ** log10_rho_c
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+        log_x2q = 2.0 * Q * np.log(np.where(x > 0.0, x, 1.0))
+        t = np.where(x > 0.0, np.tanh(0.5 * np.clip(log_x2q, -700.0, 700.0)), -1.0)
+    return eps0 + (1.0 - eps0) * 0.5 * (t + 1.0)
+
+
+def predict_refracted_gravity(
+    cyl_grid,
+    rho: np.ndarray,
+    Rrot: np.ndarray,
+    Rv: np.ndarray,
+    zv: np.ndarray,
+    eps0: float,
+    Q: float,
+    log10_rho_c: float,
+    outer_extent: float = 400.0,
+    outer_step: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Refracted gravity: solve ∇·[ε(ρ)∇φ] = 4πGρ (Matsakos & Diaferio 2016).
+
+    The equation is solved on two nested grids. An outer grid with spacing
+    `outer_step` extends to R, |z| = `outer_extent`, where the far-field condition is
+    imposed; its density is the mass of the inner grid binned into its cells and its
+    ε is that of the inner grid where they overlap (ε₀ elsewhere). The outer solution
+    gives the Dirichlet values on the edges of the inner grid (`cyl_grid`), on which
+    the equation is solved again at full resolution. v_c comes from the inner grid
+    up to 55 kpc, from the outer grid between 65 kpc and 0.9 outer_extent (blended in
+    between), and from the far-field form beyond.
+
+    Far field: outside the matter ε = ε₀, so that φ is harmonic and tends to that of a
+    point mass with G/ε₀, φ = −GM/(ε₀ r), which is imposed at the edge of the outer
+    grid. (A MOND asymptotic form, as imposed by Cesare et al. 2020, App. B.3, is not a
+    solution of the equation in the ε₀ vacuum: as a Neumann condition its flux is not
+    4πGM, and as a Dirichlet condition its additive constant changes the solution.)
+
+    Returns v_c on Rrot [km/s] and φ(R, z) − φ(R, 0) at (Rv, zv) [(km/s)^2].
+    """
+    from scipy.interpolate import RegularGridInterpolator
+    from vgrav.solver import CylGrid, axisymmetric_operator, gradients, interp2, phi_difference, blend_outer
+
+    rho = np.asarray(rho, dtype=float)
+    mass = float(np.sum(rho * 2.0 * math.pi * cyl_grid.R[:, None] * cyl_grid.dR * cyl_grid.dz))
+    eps = refracted_gravity_permittivity(rho, eps0, Q, log10_rho_c)
+
+    def far_field(r):
+        r = np.maximum(r, 1e-6)
+        return -G * mass / (eps0 * r), G * mass / (eps0 * r)
+
+    # outer grid: binned mass, permittivity of the inner grid where they overlap
+    n_r = int(round(outer_extent / outer_step))
+    outer = CylGrid(R=np.linspace(0.0, outer_extent, n_r + 1),
+                    z=np.linspace(-outer_extent, outer_extent, 2 * n_r + 1))
+    r_edges = np.concatenate(([0.0], outer.R[:-1] + 0.5 * outer_step, [outer_extent + 0.5 * outer_step]))
+    z_edges = np.concatenate(([outer.z[0] - 0.5 * outer_step], outer.z[:-1] + 0.5 * outer_step,
+                              [outer.z[-1] + 0.5 * outer_step]))
+    RR, ZZ = np.meshgrid(cyl_grid.R, cyl_grid.z, indexing="ij")
+    m_cells = (rho * 2.0 * math.pi * RR * cyl_grid.dR * cyl_grid.dz).ravel()
+    m_outer, _, _ = np.histogram2d(RR.ravel(), ZZ.ravel(), bins=[r_edges, z_edges], weights=m_cells)
+    vol = (math.pi * (r_edges[1:] ** 2 - r_edges[:-1] ** 2))[:, None] * np.diff(z_edges)[None, :]
+    rho_outer = m_outer / vol
+    eps_interp = RegularGridInterpolator((cyl_grid.R, cyl_grid.z), eps, bounds_error=False, fill_value=eps0)
+    ORR, OZZ = np.meshgrid(outer.R, outer.z, indexing="ij")
+    eps_outer = eps_interp(np.column_stack([ORR.ravel(), OZZ.ravel()])).reshape(ORR.shape)
+    phi_bound_outer, _ = far_field(np.sqrt(ORR ** 2 + OZZ ** 2))
+    phi_outer = axisymmetric_operator(outer, eps=eps_outer)(4.0 * math.pi * G * rho_outer, phi_bound_outer)
+
+    # inner grid with the outer solution on its edges
+    phi_interp = RegularGridInterpolator((outer.R, outer.z), phi_outer)
+    bvals = phi_interp(np.column_stack([RR.ravel(), ZZ.ravel()])).reshape(RR.shape)
+    phi = axisymmetric_operator(cyl_grid, eps=eps)(4.0 * math.pi * G * rho, bvals)
+
+    Rrot = np.asarray(Rrot, dtype=float)
+    d_r, _ = gradients(cyl_grid, phi)
+    inside = np.minimum(Rrot, cyl_grid.R[-1])
+    v2_in = Rrot * interp2(cyl_grid, d_r, inside, np.zeros_like(inside))
+    d_r_out, _ = gradients(outer, phi_outer)
+    r_out = np.minimum(Rrot, 0.9 * outer_extent)
+    j0 = n_r                                   # z = 0 on the outer grid
+    v2_mid_out = Rrot * np.interp(r_out, outer.R, d_r_out[:, j0])
+    _, v2_far = far_field(Rrot)
+    v2_outer = blend_outer(Rrot, v2_mid_out, v2_far, 0.85 * outer_extent, 0.9 * outer_extent)
+    v2 = blend_outer(Rrot, v2_in, v2_outer, 55.0, 65.0)
+    return np.sqrt(np.maximum(v2, 0.0)), phi_difference(cyl_grid, phi, Rv, zv)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # QUMOND full Poisson solver
 # ═══════════════════════════════════════════════════════════════════════════════
 

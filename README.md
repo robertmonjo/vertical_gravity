@@ -83,15 +83,15 @@ The large chi2_nu for Baryonic Newtonian (~183-195) reflects the well-known
 missing-mass problem: baryons alone cannot explain the observed Milky Way
 rotation curve.  CDM-Einasto and s-HMG give the best fits (chi2_nu ~ 2.5-3.1).
 
-### Table 3 and Fig. 2 (band-consistent ensembles)
+### Table 3 (band-consistent ensembles, statistical errors only)
 
-The manuscript's Table 3 and Fig. 2 use the band-consistent (BC) fits stored in
+Table 3 of the earlier version uses the band-consistent (BC) fits stored in
 `outputs/bc_nbar{1,2,3,4}/`, one directory per baryonic ensemble (MI, MI+LW,
 MI+LW+B2, MI+LW+B2+MM). Each model CSV stores the chi² of every draw in its
 last row.
 
 ```bash
-# Fig. 2: writes figs/fig2_reproduced_4fam.png
+# Figure with these fits: writes figs/fig2_reproduced_4fam.png
 python scripts/step3_bc_fig2.py
 
 # Table 3: p50 (p16/p84) of chi2_nu and number of leads per ensemble
@@ -104,8 +104,8 @@ To refit the BC models from the baryonic draws (several hours per ensemble):
 python scripts/step2_bc.py --full --no-stvg --baryon-band outputs/nbar1/baryon_band_nbar1.csv --baryonic-dir outputs/nbar1 --outdir outputs/bc_nbar1
 ```
 
-The s/r_h-HMG curve of Fig. 2 (`outputs/bc_nbar4/model_bc_hmg_sk2_*`) is
-obtained with the same statistic as the other curves of the figure:
+The s/r_h-HMG curve of that figure (`outputs/bc_nbar4/model_bc_hmg_sk2_*`) is
+obtained with the same statistic as its other curves:
 
 ```bash
 python scripts/step2_bc.py --full --no-stvg --models hmg_sk2 --baryon-band outputs/nbar4/baryon_band_nbar4.csv --baryonic-dir outputs/nbar4 --outdir outputs/bc_nbar4
@@ -145,11 +145,16 @@ Two frameworks are provided:
    above and within +-10 sigma of their centres. QUMOND is solved with its
    Poisson equation, so that v_c and Phi_z derive from one potential: a 9 x 9
    grid of disc factors (steps of 2 sigma) followed by a 5 x 5 refinement
-   (steps of 0.5 sigma) around the best point. STVG uses the linearity of the
-   Yukawa term in alpha and in the density: for each mu on a logarithmic grid
-   (0.003–3 kpc^-1, including 0.04 kpc^-1) the thin-disc, thick-disc,
-   remaining-disc and bulge kernels are computed once, and (z_t, z_k, alpha)
-   are fitted by linear combination.
+   (steps of 0.5 sigma) around the best point. STVG is solved on the same
+   grid: Phi_STVG = Phi_N + alpha (Phi_N - Phi_Y), with (nabla^2 - mu^2) Phi_Y =
+   4 pi G rho for the same density (`vgrav.models.stvg_grid_kernel`); the
+   correction is linear in the density, so for each mu on a logarithmic grid
+   (0.003–3 kpc^-1, including 0.04 kpc^-1) three kernels are computed once and
+   (z_t, z_k, alpha) are fitted by linear combination. Refracted gravity solves
+   nabla.[eps(rho) nabla phi] = 4 pi G rho with the permittivity of Cesare et al.
+   (2020, Eq. 5) on nested grids: the outer grid (1 kpc spacing, 400 kpc) carries
+   the far field of an isolated system, phi = -GM/(eps0 r), and gives the
+   boundary of the inner grid (`vgrav.models.predict_refracted_gravity`).
    Output: `outputs/likelihood_bic/likelihood_bic_fits.csv`
    (columns: variant, config, model, k, N, m2lnL, chi2, chi2_nu, BIC, zt, zk,
    rho_thin, rho_thick, theta) and `outputs/likelihood_bic/summary.txt`.
@@ -157,24 +162,39 @@ Two frameworks are provided:
    --radial-variant V`). The four cumulative ensembles of Table 3 are refitted
    draw by draw with the same likelihood (discs fixed by each draw), with
    QUMOND solved (`--no-approx`). `scripts/likelihood_bic_mc100_extra.py` adds
-   STVG with universal parameters and the VEG apparent dark matter, computing
-   each prediction once per draw and scoring it for the five data vectors.
+   STVG with universal parameters, refracted gravity with the DiskMass
+   parameters and the VEG apparent dark matter, computing each prediction once
+   per draw and scoring it for the five data vectors.
    `scripts/likelihood_bic_mc100_summary.py` gives the median Delta BIC with
    respect to the best model of each draw and the number of draws in which each
    model has the lowest BIC. Output: `outputs/likelihood_bic_mc100/summary_<variant>.txt`
    and, per ensemble, `bic_per_draw.csv` and `likelihood_setup.json`.
 
+The baryonic realisation can also be treated as a nuisance parameter:
+`scripts/likelihood_bic_marginal.py` computes, from the existing BIC values and
+without new fits, `BIC_marg = -2 ln[(1/N) sum_i exp(-BIC_i/2)]` over the draws
+of each ensemble (and over the four reconstructions in framework 1). Output:
+`outputs/likelihood_bic_mc100/marginal_all.txt`.
+
 Reproduce everything from the bundled data and MC100 draws:
 
 ```bash
-WORKERS=24 bash scripts/run_likelihood_bic.sh     # ~80 min on 32 cores
+WORKERS=24 bash scripts/run_likelihood_bic.sh     # ~2.5 h on 32 cores
 cat outputs/likelihood_bic/summary.txt             # framework 1 tables
 cat outputs/likelihood_bic_mc100/summary_all.txt  # framework 2 table
 ```
 
 The launcher also writes `tables/likelihood_bic_tables.tex`, the rows of
-Tables 4 and 5 of the paper. Both tables list only the models with a physical
+Tables 4, 5 and 6 of the paper. The tables list only the models with a physical
 implementation; the rows of the remaining keys stay in the CSV files.
+
+Fig. 2 of the paper is drawn from the framework-2 fits of the four-source
+ensemble, with the legend giving the median Delta BIC of Table 5 (requires the
+model CSVs written by `run_likelihood_bic.sh`):
+
+```bash
+python scripts/step3_bc_fig2_physical.py           # figs/fig2_physical_models.png
+```
 
 Each ensemble must be run with its own baryonic band
 (`--baryon-band outputs/nbar<n>/baryon_band_nbar<n>.csv`); `run_likelihood_bic.sh`
@@ -198,10 +218,12 @@ Model keys:
 | `veg_verlinde_free` | the same with `a0` free | a0 |
 | `stvg_std` | STVG with `alpha = 8.89`, `mu = 0.04 kpc^-1` (Moffat & Rahvar 2013) | none |
 | `fr_bounded` | f(R)-type interpolation function `nu = 1 + delta_sc exp(-x/x_c)` with `delta_sc <= 1/3` | delta_sc, x_c |
-| `refracted_gravity` | algebraic refracted-gravity prescription `nu = 1/eps(x)` | eps_inf, x_c |
+| `reg_dms` | refracted gravity solved with its field equation, `eps0 = 0.661`, `Q = 1.79`, `log10 rho_c = -24.54` g cm^-3 (DiskMass Survey, Cesare et al. 2020) | none |
+| `reg_free` | the same with `eps0`, `Q` and `rho_c` free within the priors of Cesare et al. (2020) | eps0, Q, rho_c |
 | `cdm_nfw`, `cdm_einasto` | CDM haloes | 2 (NFW), 3 (Einasto) |
 
-`veg_fixed`, `veg_free`, `fr_screened` (amplitude unbounded), `stvg` (alpha and
+`veg_fixed`, `veg_free`, `fr_screened` (amplitude unbounded),
+`refracted_gravity` (algebraic prescription `nu = 1/eps(x)`), `stvg` (alpha and
 mu free) and `hmg_sr` are kept in the CSV files for comparison with the earlier
 fits of Table 2.
 
@@ -287,7 +309,9 @@ release/
     ├── bc_leads_table.py               Table 3 (chi2_nu percentiles and leads)
     ├── likelihood_bic.py               Full-likelihood fits per reconstruction
     ├── likelihood_bic_stvg.py          STVG fits for likelihood_bic.py
-    ├── likelihood_bic_mc100_extra.py   STVG (universal) and VEG fits of the MC100 ensembles
+    ├── likelihood_bic_mc100_extra.py   STVG (universal), ReG (DiskMass) and VEG fits of the MC100 ensembles
+    ├── likelihood_bic_marginal.py      Delta BIC marginalised over the baryonic realisations
+    ├── step3_bc_fig2_physical.py       Fig. 2 from the full-likelihood fits
     ├── likelihood_bic_mc100_summary.py BIC summary of the MC100 ensembles
     ├── run_likelihood_bic.sh           Runs the full-likelihood comparison
     ├── likelihood_bic_tables.py        LaTeX rows of the full-likelihood tables

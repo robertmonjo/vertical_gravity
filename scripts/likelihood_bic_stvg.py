@@ -1,14 +1,16 @@
-"""STVG fits for likelihood_bic.py, using the linearity of the Yukawa term.
+"""STVG fits for likelihood_bic.py, solved on the axisymmetric grid.
 
-The STVG prediction is
-    v_c^2 = R [(1 + alpha) g_N - alpha (a_Y,disc + a_Y,bulge)]
-    Phi   = (1 + alpha) Phi_N + alpha (phi_Y,disc + phi_Y,bulge),
-where the Yukawa terms (per unit alpha) depend only on mu and are linear in
-the density. The disc density scaled by the thin- and thick-disc factors is
-z_t rho_T + z_k rho_K + rho_rest, so for each mu three disc kernels (thin,
-thick, rest) and one bulge kernel are computed once. The fit over
-(z_t, z_k, alpha) at fixed mu then costs only linear combinations, and mu is
-profiled on a logarithmic grid.
+In the weak-field limit of STVG (Moffat & Rahvar 2013),
+    Phi_STVG = Phi_N + alpha D,   D = Phi_N - Phi_Y,
+    nabla^2 Phi_N = 4 pi G rho,   (nabla^2 - mu^2) Phi_Y = 4 pi G rho,
+so that v_c^2 = v_N^2 + alpha R dD/dR at z = 0 (vgrav.models.stvg_grid_kernel).
+Both potentials are solved on the grid of the Newtonian potential and for the
+same density. The density scaled by the disc factors is
+    rho(z_t, z_k) = [1 + f_T (z_t - 1) + f_K (z_k - 1)] rho_3d,
+as for QUMOND in likelihood_bic.py, and D is linear in the density; for each mu
+three kernels (rho_3d, f_T rho_3d, f_K rho_3d) are computed once, and the fit over
+(z_t, z_k, alpha) at fixed mu costs only linear combinations. mu is profiled on
+a logarithmic grid.
 
 Usage
 -----
@@ -35,29 +37,46 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import likelihood_bic as L
-from vgrav.models import stvg_disk_accel_and_phi, stvg_bulge_yukawa_resolved
+from vgrav.models import stvg_grid_kernel
+from vgrav.solver import axisymmetric_operator, monopole_boundary
 
 MU_UNIVERSAL, ALPHA_UNIVERSAL = 0.04, 8.89   # Moffat & Rahvar (2013)
 MU_GRID = np.unique(np.append(np.geomspace(0.003, 3.0, 19), MU_UNIVERSAL))
-KERNEL_CACHE = L.OUT_DIR / "stvg_kernels.npz"
 ALPHA_BOUNDS = (math.log(1e-3), math.log(1e3))
-COMPONENTS = ("thin", "thick", "rest")
+COMPONENTS = ("all", "thin", "thick")
 
 
-def disc_component(config, which):
+def component_densities(config):
     b, grid = L.STATE["bases"][config], L.STATE["cyl_grid"]
     fT, fK = L.disc_fractions(grid.R)
-    weight = {"thin": fT, "thick": fK, "rest": 1.0 - fT - fK}[which]
-    return weight[:, None] * b["rho_disc"]
+    return {"all": b["rho_3d"], "thin": fT[:, None] * b["rho_3d"], "thick": fK[:, None] * b["rho_3d"]}
 
 
 def kernel(task):
-    config, which, mu = task
-    comp = L.build_component_grid_from_rho_cyl(disc_component(config, which), L.STATE["cyl_grid"],
-                                               nr=50, nz=25, nphi=36)
-    a, p = stvg_disk_accel_and_phi(L.STATE["bases"][config]["r_line"], L.STATE["vert"]["rv"],
-                                   L.STATE["vert"]["zv"], comp, 1.0, float(mu))
-    return task, a, p
+    """Kernels (R dD/dR on r_line, D(R,z) - D(R,0) at the vertical points) for one config and mu."""
+    config, mu = task
+    grid = L.STATE["cyl_grid"]
+    poisson, yukawa = axisymmetric_operator(grid), axisymmetric_operator(grid, mu=float(mu))
+    rv, zv = L.STATE["vert"]["rv"], L.STATE["vert"]["zv"]
+    out = {}
+    for which, rho in component_densities(config).items():
+        mass = float(np.sum(rho * 2.0 * math.pi * grid.R[:, None] * grid.dR * grid.dz))
+        phi_n = poisson(4.0 * math.pi * L.G * rho, monopole_boundary(grid, mass))
+        out[which] = stvg_grid_kernel(grid, rho, float(mu), L.STATE["bases"][config]["r_line"], rv, zv,
+                                      phi_n_grid=phi_n, yukawa_solve=yukawa)
+    return task, out
+
+
+def combine(ker, zt, zk):
+    k0, kT, kK = ker["all"], ker["thin"], ker["thick"]
+    return (k0[0] + (zt - 1.0) * kT[0] + (zk - 1.0) * kK[0],
+            k0[1] + (zt - 1.0) * kT[1] + (zk - 1.0) * kK[1])
+
+
+def predict(config, ker, zt, zk, alpha):
+    r_line, v2_rad, _, phi_sc = L.scaled_inputs(config, zt, zk)
+    dv2, dphi = combine(ker, zt, zk)
+    return np.sqrt(np.maximum(v2_rad + alpha * dv2, 0.0)), phi_sc + alpha * dphi
 
 
 def fit_universal(config, variant, kernels):
@@ -65,20 +84,10 @@ def fit_universal(config, variant, kernels):
     zt0, zk0, c_sun = L.STATE["prior"][config]
     r_line = L.STATE["bases"][config]["r_line"]
     radial = L.STATE["radial"][variant]
-    kT, kK, kR, kB = (kernels[(config, w, MU_UNIVERSAL)] for w in ("thin", "thick", "rest", "bulge"))
-    alpha = ALPHA_UNIVERSAL
-
-    def predict(p):
-        zt, zk = p[0], p[1]
-        _, v2_rad, _, phi_sc = L.scaled_inputs(config, zt, zk)
-        g_n = v2_rad / np.maximum(r_line, 1e-8)
-        a_y = zt * kT[0] + zk * kK[0] + kR[0] + kB[0]
-        p_y = zt * kT[1] + zk * kK[1] + kR[1] + kB[1]
-        vc = np.sqrt(np.maximum(r_line * ((1.0 + alpha) * g_n - alpha * a_y), 0.0))
-        return vc, (1.0 + alpha) * phi_sc + alpha * p_y
+    ker = kernels[(config, MU_UNIVERSAL)]
 
     def objective(p):
-        vc, phi = predict(p)
+        vc, phi = predict(config, ker, p[0], p[1], ALPHA_UNIVERSAL)
         m2, _ = L.score(vc, r_line, phi, radial, L.STATE["vert"])
         value = m2 + L.prior_term(p[0], p[1], c_sun)
         return value if np.isfinite(value) else 1e12
@@ -90,10 +99,10 @@ def fit_universal(config, variant, kernels):
                        options={"maxiter": 1500, "ftol": 1e-12})
         if np.isfinite(res.fun) and (best is None or res.fun < best.fun):
             best = res
-    vc, phi = predict(best.x)
+    vc, phi = predict(config, ker, best.x[0], best.x[1], ALPHA_UNIVERSAL)
     _, chi2 = L.score(vc, r_line, phi, radial, L.STATE["vert"])
     return L.row(variant, config, "stvg_std", 2, best.fun, chi2, best.x[0], best.x[1],
-                 [math.log(alpha), math.log(MU_UNIVERSAL)], c_sun)
+                 [math.log(ALPHA_UNIVERSAL), math.log(MU_UNIVERSAL)], c_sun)
 
 
 def fit(config, variant, kernels):
@@ -103,19 +112,10 @@ def fit(config, variant, kernels):
     bounds = list(L.disc_bounds(zt0, zk0)) + [ALPHA_BOUNDS]
     best = None
     for mu in MU_GRID:
-        kT, kK, kR, kB = (kernels[(config, w, mu)] for w in ("thin", "thick", "rest", "bulge"))
-
-        def predict(p):
-            zt, zk, alpha = p[0], p[1], math.exp(p[2])
-            _, v2_rad, _, phi_sc = L.scaled_inputs(config, zt, zk)
-            g_n = v2_rad / np.maximum(r_line, 1e-8)
-            a_y = zt * kT[0] + zk * kK[0] + kR[0] + kB[0]
-            p_y = zt * kT[1] + zk * kK[1] + kR[1] + kB[1]
-            vc = np.sqrt(np.maximum(r_line * ((1.0 + alpha) * g_n - alpha * a_y), 0.0))
-            return vc, (1.0 + alpha) * phi_sc + alpha * p_y
+        ker = kernels[(config, mu)]
 
         def objective(p):
-            vc, phi = predict(p)
+            vc, phi = predict(config, ker, p[0], p[1], math.exp(p[2]))
             m2, _ = L.score(vc, r_line, phi, radial, L.STATE["vert"])
             value = m2 + L.prior_term(p[0], p[1], c_sun)
             return value if np.isfinite(value) else 1e12
@@ -124,7 +124,7 @@ def fit(config, variant, kernels):
             res = minimize(objective, [zt0, zk0, la], method="L-BFGS-B", bounds=bounds,
                            options={"maxiter": 1500, "ftol": 1e-12})
             if np.isfinite(res.fun) and (best is None or res.fun < best[0]):
-                vc, phi = predict(res.x)
+                vc, phi = predict(config, ker, res.x[0], res.x[1], math.exp(res.x[2]))
                 _, chi2 = L.score(vc, r_line, phi, radial, L.STATE["vert"])
                 best = (res.fun, chi2, res.x[0], res.x[1], [res.x[2], math.log(mu)])
     return L.row(variant, config, "stvg", 4, best[0], best[1], best[2], best[3], best[4], c_sun)
@@ -138,30 +138,13 @@ def main():
     configs = args.configs.split(",")
     L.build_state(configs)
     t0 = time.time()
+    tasks = [(c, mu) for c in configs for mu in MU_GRID]
     kernels = {}
-    rv, zv = L.STATE["vert"]["rv"], L.STATE["vert"]["zv"]
-    for config in configs:
-        for mu in MU_GRID:
-            kernels[(config, "bulge", mu)] = stvg_bulge_yukawa_resolved(
-                L.STATE["bases"][config]["r_line"], rv, zv, 1.0, float(mu))
-    cached = dict(np.load(KERNEL_CACHE)) if KERNEL_CACHE.exists() else {}
-    key = lambda c, w, mu: f"{c}|{w}|{mu:.6g}"
-    tasks = []
-    for c in configs:
-        for w in COMPONENTS:
-            for mu in MU_GRID:
-                if key(c, w, mu) + "|a" in cached:
-                    kernels[(c, w, mu)] = (cached[key(c, w, mu) + "|a"], cached[key(c, w, mu) + "|p"])
-                else:
-                    tasks.append((c, w, mu))
-    print(f"  kernels from cache: {len(kernels) - len(configs) * len(MU_GRID)}, to compute: {len(tasks)}", flush=True)
     with get_context("fork").Pool(args.workers) as pool:
-        for i, (task, a, p) in enumerate(pool.imap_unordered(kernel, tasks), 1):
-            kernels[task] = (a, p)
-            cached[key(*task) + "|a"], cached[key(*task) + "|p"] = a, p
-            if i % 12 == 0 or i == len(tasks):
+        for i, (task, ker) in enumerate(pool.imap_unordered(kernel, tasks), 1):
+            kernels[task] = ker
+            if i % 10 == 0 or i == len(tasks):
                 print(f"  [{time.time() - t0:7.1f}s] kernels {i}/{len(tasks)}", flush=True)
-    np.savez(KERNEL_CACHE, **cached)
     rows = [fit(c, v, kernels) for c in configs for v in L.RADIAL_VARIANTS]
     rows += [fit_universal(c, v, kernels) for c in configs for v in L.RADIAL_VARIANTS]
     L.write_rows(rows)

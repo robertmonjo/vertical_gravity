@@ -1,0 +1,33 @@
+% framework (a), variant all: Delta BIC^marg over MI, LW, B2, MM (effective number)
+reg_free                   0.0   (1.00)
+hmg_sk2                    9.3   (1.00)
+hmg_sp                    17.9   (1.00)
+cdm_nfw                   24.8   (1.00)
+e2d_k2                    26.3   (1.00)
+qumond_mls                29.8   (1.00)
+cdm_einasto               30.2   (1.01)
+qumond_simple             36.2   (1.00)
+stvg_std                  79.2   (1.00)
+veg_verlinde_free         79.6   (2.00)
+veg_verlinde              90.8   (1.00)
+qumond_standard          111.6   (1.00)
+reg_dms                  144.1   (1.00)
+fr_bounded               373.0   (1.00)
+baryonic                 759.3   (1.00)
+
+% framework (b), variant all: Delta BIC^marg over the 100 draws of each ensemble
+model                    nbar1     nbar2     nbar3     nbar4
+hmg_sk2                    0.0       0.0       0.0       0.0
+hmg_k1                     3.6       5.7      11.4       6.7
+cdm_nfw                   18.3      21.0      27.8      19.2
+cdm_einasto               23.9      25.8      30.5      22.3
+e2d_k2                    20.7      18.7      36.8      24.6
+stvg_std                  49.2      32.4      53.3      64.8
+mond_rar                 164.9      97.6      52.3      79.1
+veg_verlinde             533.1      65.8      95.8      79.2
+veg_verlinde_free         96.6      68.5     101.0      83.3
+mond_simple              165.9      92.3      71.3     100.1
+mond_standard            246.2     180.1     177.7     204.7
+fr_bounded               324.0     280.2     307.2     324.5
+reg_dms                  321.1     299.8     343.5     356.5
+baryonic                 907.0     836.8     943.1     985.1
