@@ -12,10 +12,11 @@ s-HMG+Imig overlay from .../bc_nbar1/, so that the models are those of Table 5:
   ReG                             solved on nested grids, DiskMass parameters (Cesare et al. 2020)
   CDM NFW and Einasto, sr_h-HMG, s/r_h-HMG
 
-The legend gives, for each model, the median over draws of Delta BIC with
-respect to the best model of the same draw (Table 5). The s-HMG+Imig overlay
-comes from the MI ensemble and carries no value, since its Delta BIC refers to
-another set of draws.
+The legend gives, for each model, Delta BIC with the BIC marginalised over the
+100 draws of the ensemble, -2 ln[(1/N) sum_i exp(-BIC_i/2)], so that the
+baryonic uncertainty is included (Table 5, marginalised columns). The
+s-HMG+Imig overlay comes from the MI ensemble and carries no value, since its
+Delta BIC refers to another set of draws.
 
 Requires the model CSVs written by run_likelihood_bic.sh (not bundled; only
 bic_per_draw.csv is).
@@ -79,15 +80,18 @@ def stage(src: Path, nbar_dir: Path, dest: Path) -> None:
         shutil.copy2(nbar_dir / name, dest / name)
 
 
-def median_delta_bic(directory: Path) -> dict[str, float]:
+def marginal_delta_bic(directory: Path) -> dict[str, float]:
+    """Delta BIC with each BIC marginalised over the draws: -2 ln[(1/N) sum_i exp(-BIC_i/2)]."""
     with open(directory / "bic_per_draw.csv", newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     keys = [k for k in rows[0] if k != "draw"]
-    bic = np.array([[float(r[k]) for k in keys] for r in rows])
-    delta = bic - bic.min(axis=1, keepdims=True)
-    med = dict(zip(keys, np.median(delta, axis=0)))
+    marg = {}
+    for k in keys:
+        b = np.array([float(r[k]) for r in rows])
+        marg[k] = float(b.min() - 2.0 * np.log(np.mean(np.exp(-0.5 * (b - b.min())))))
+    best = min(marg.values())
     inverse = {v: k for k, v in KEY_MAP.items()}
-    return {inverse[k]: float(v) for k, v in med.items() if k in inverse}
+    return {inverse[k]: v - best for k, v in marg.items() if k in inverse}
 
 
 def main() -> None:
@@ -108,9 +112,9 @@ def main() -> None:
     _ensure_baryon_band(dest1)
 
     # the s-HMG+Imig overlay belongs to another ensemble: no value in the legend
-    values = median_delta_bic(run / "bc_nbar4")
+    values = marginal_delta_bic(run / "bc_nbar4")
     for k, v in sorted(values.items(), key=lambda kv: kv[1]):
-        print(f"  {k:<20} median Delta BIC = {v:8.1f}")
+        print(f"  {k:<20} marginalised Delta BIC = {v:8.1f}")
 
     obs = ROOT / "data" / "fig2_observational_data.csv"
     if not obs.exists():
@@ -124,7 +128,8 @@ def main() -> None:
     fig = plot_fig2(dest4, obs_path=obs, output_path=out, dpi=args.dpi,
                     hmg_1fam_outputs_dir=dest1, model_keys=FIGURE_KEYS,
                     label_overrides=LABELS, legend_values=values,
-                    legend_symbol=r"\Delta{\rm BIC}", legend_fmt=".1f")
+                    legend_symbol=r"\Delta{\rm BIC}_{\rm marg}", legend_fmt=".1f",
+                    model_legend_spacing=0.5)
     plt.close(fig)
 
 

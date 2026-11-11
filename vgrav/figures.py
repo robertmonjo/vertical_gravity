@@ -139,6 +139,7 @@ def plot_fig2(
     legend_values: Optional[dict[str, float]] = None,
     legend_symbol: str = r"\chi^2_{\nu}",
     legend_fmt: str = ".2f",
+    model_legend_spacing: float = 0.08,
 ) -> plt.Figure:
     """Reproduce Fig. 2: rotation curve + 9 vertical potential panels.
 
@@ -155,6 +156,8 @@ def plot_fig2(
                       chi2_nu of mc100_chi2_all_models.csv; the key "hmg_1fam"
                       gives the value of the s-HMG+Imig overlay.
     legend_symbol, legend_fmt : symbol and number format of the legend values.
+    model_legend_spacing : vertical space between the entries of the gravity-model
+                    legend, in units of the font size.
 
     Returns
     -------
@@ -424,7 +427,7 @@ def plot_fig2(
         fig.legend(handles=model_handles, loc="upper right",
                    bbox_to_anchor=(0.985, 0.995), ncol=2, frameon=False,
                    title="Gravity models", fontsize=9.0, title_fontsize=10.8,
-                   handlelength=2.0, handletextpad=0.3, labelspacing=0.08,
+                   handlelength=2.0, handletextpad=0.3, labelspacing=model_legend_spacing,
                    columnspacing=0.5)
 
     fig.add_subplot(gs[1]).axis("off")

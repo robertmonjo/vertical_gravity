@@ -184,13 +184,14 @@ cat outputs/likelihood_bic/summary.txt             # framework 1 tables
 cat outputs/likelihood_bic_mc100/summary_all.txt  # framework 2 table
 ```
 
-The launcher also writes `tables/likelihood_bic_tables.tex`, the rows of
-Tables 4, 5 and 6 of the paper. The tables list only the models with a physical
+The launcher also writes `tables/likelihood_bic_tables.tex`, the rows of the
+two full-likelihood tables of the paper (fits per reconstruction; MC100
+ensembles with the median and the baryon-marginalised Delta BIC). The tables list only the models with a physical
 implementation; the rows of the remaining keys stay in the CSV files.
 
 Fig. 2 of the paper is drawn from the framework-2 fits of the four-source
-ensemble, with the legend giving the median Delta BIC of Table 5 (requires the
-model CSVs written by `run_likelihood_bic.sh`):
+ensemble, with the legend giving the Delta BIC marginalised over the baryonic
+draws (requires the model CSVs written by `run_likelihood_bic.sh`):
 
 ```bash
 python scripts/step3_bc_fig2_physical.py           # figs/fig2_physical_models.png
