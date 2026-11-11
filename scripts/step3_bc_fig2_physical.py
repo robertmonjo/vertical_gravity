@@ -129,7 +129,7 @@ def main() -> None:
                     hmg_1fam_outputs_dir=dest1, model_keys=FIGURE_KEYS,
                     label_overrides=LABELS, legend_values=values,
                     legend_symbol=r"\Delta{\rm BIC}_{\rm marg}", legend_fmt=".1f",
-                    model_legend_spacing=0.5)
+                    model_legend_spacing=0.25)
     plt.close(fig)
 
 
