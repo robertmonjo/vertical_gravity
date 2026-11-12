@@ -102,8 +102,9 @@ def main() -> None:
     args = parser.parse_args()
 
     run = ROOT / "outputs" / "likelihood_bic_mc100" / args.variant
-    dest4 = ROOT / "outputs" / f"fig2_physical_{args.variant}_nbar4"
-    dest1 = ROOT / "outputs" / f"fig2_physical_{args.variant}_nbar1"
+    # staging directories (not tracked); their parent holds the band files used by plot_fig2
+    dest4 = ROOT / "outputs" / "fig2_physical" / f"{args.variant}_nbar4"
+    dest1 = ROOT / "outputs" / "fig2_physical" / f"{args.variant}_nbar1"
     stage(run / "bc_nbar4", ROOT / "outputs" / "nbar4", dest4)
     stage(run / "bc_nbar1", ROOT / "outputs" / "nbar1", dest1)
 
