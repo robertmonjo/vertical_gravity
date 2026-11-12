@@ -43,5 +43,5 @@ for v in $VARIANTS; do
   python scripts/likelihood_bic_mc100_summary.py --write-csv "$OUT_B/$v"/bc_nbar{1,2,3,4} > "$OUT_B/summary_$v.txt"
 done
 python scripts/likelihood_bic.py --summary > outputs/likelihood_bic/summary.txt
-python scripts/likelihood_bic_tables.py --variant all > tables/likelihood_bic_tables.tex
+python scripts/likelihood_bic_tables.py --variant all --rows-dir tables > tables/likelihood_bic_tables.tex
 python scripts/likelihood_bic_marginal.py --variant all > outputs/likelihood_bic_mc100/marginal_all.txt

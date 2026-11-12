@@ -38,7 +38,7 @@ All fits are bundled in `outputs/`. The tables and Fig. 2 of the paper are
 rebuilt from them without new fits:
 
 ```bash
-python scripts/likelihood_bic_tables.py > tables/likelihood_bic_tables.tex   # rows of the two BIC tables
+python scripts/likelihood_bic_tables.py --rows-dir tables > tables/likelihood_bic_tables.tex   # rows of the two BIC tables
 python scripts/likelihood_bic_marginal.py                                    # Delta BIC marginalised over the baryons
 python scripts/likelihood_bic.py --summary                                   # all models and radial data vectors, per reconstruction
 cat outputs/likelihood_bic_mc100/summary_all.txt                             # MC100 ensembles, all models
@@ -46,8 +46,9 @@ python scripts/step3_bc_fig2_physical.py                                     # F
 python scripts/step0_reproduce_fig1.py                                       # Fig. 1
 ```
 
-`tables/likelihood_bic_tables.tex` holds, row by row, the two BIC tables of the
-paper: fits per baryonic reconstruction (chi2_nu and Delta BIC), and the MC100
+`tables/bic_reconstruction_rows.tex` and `tables/bic_mc100_rows.tex` are read
+by the manuscript as they are; `tables/likelihood_bic_tables.tex` holds both,
+with comments. The two BIC tables of the paper are: fits per baryonic reconstruction (chi2_nu and Delta BIC), and the MC100
 ensembles (median Delta BIC with p16–p84 and number of realisations with the
 lowest BIC; Delta BIC marginalised over the realisations).
 

@@ -10,7 +10,7 @@ Table B: MC100 ensembles (outputs/likelihood_bic_mc100/<variant>/bc_nbar<n>/bic_
 
 Usage
 -----
-  python scripts/likelihood_bic_tables.py [--variant all] > tables/likelihood_bic_tables.tex
+  python scripts/likelihood_bic_tables.py [--variant all] [--rows-dir tables] > tables/likelihood_bic_tables.tex
 """
 from __future__ import annotations
 
@@ -50,7 +50,8 @@ def fmt(x: float) -> str:
     return f"{x:.0f}" if abs(x) >= 100 else f"{x:.1f}"
 
 
-def table_a(variant: str) -> None:
+def table_a(variant: str) -> list[str]:
+    out = []
     rows = [r for r in csv.DictReader(open(ROOT / "outputs/likelihood_bic/likelihood_bic_fits.csv", encoding="utf-8"))
             if r["variant"] == variant]
     shown = {key for key, _ in ROWS_A}
@@ -64,15 +65,19 @@ def table_a(variant: str) -> None:
             d = float(hit["BIC"]) - best[c]
             dbic = r"\textbf{0}" if d == 0 else fmt(d)
             cells.append(f"{float(hit['chi2_nu']):.2f} & {dbic}")
-        print(f"{label} & {k} & " + " & ".join(cells) + r" \\")
+        out.append(f"{label} & {k} & " + " & ".join(cells) + r" \\")
         if key == "baryonic":
-            print(r"\hline")
+            out.append(r"\hline")
+    for line in out:
+        print(line)
     hmg = {c: next(r for r in rows if r["config"] == c and r["model"] == "hmg_sp") for c in CONFIGS}
     print("% s-HMG best-fit s per reconstruction: "
           + ", ".join(f"{c}: {math.exp(json.loads(hmg[c]['theta'])[0]):.2f}" for c in CONFIGS))
+    return out
 
 
-def table_b(variant: str) -> None:
+def table_b(variant: str) -> list[str]:
+    out = []
     print(f"% Table B, variant {variant}: median Delta BIC (+p84 -p16) and wins per ensemble, "
           "then Delta BIC marginalised over the draws, per ensemble")
     data = []
@@ -94,18 +99,29 @@ def table_b(variant: str) -> None:
             cell = r"\textbf{0}" if p84 == 0 else f"${fmt(p50)}^{{+{fmt(p84 - p50)}}}_{{-{fmt(p50 - p16)}}}$"
             cells.append(cell + (rf"\ ({wins})" if wins else ""))
             cells_m.append(r"\textbf{0}" if marg[key] == 0 else fmt(marg[key]))
-        print(f"{label} & {k} & " + " & ".join(cells + [" "] + cells_m) + r" \\")
+        out.append(f"{label} & {k} & " + " & ".join(cells + [" "] + cells_m) + r" \\")
         if key == "baryonic":
-            print(r"\hline")
+            out.append(r"\hline")
+    for line in out:
+        print(line)
+    return out
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--variant", default="all")
+    parser.add_argument("--rows-dir", default=None,
+                        help="also write the rows of each table to <dir>/bic_reconstruction_rows.tex and "
+                             "<dir>/bic_mc100_rows.tex, read by the manuscript with \\input")
     args = parser.parse_args()
-    table_a(args.variant)
+    rows_a = table_a(args.variant)
     print()
-    table_b(args.variant)
+    rows_b = table_b(args.variant)
+    if args.rows_dir:
+        d = Path(args.rows_dir)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "bic_reconstruction_rows.tex").write_text("\n".join(rows_a) + "\n", encoding="utf-8")
+        (d / "bic_mc100_rows.tex").write_text("\n".join(rows_b) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
