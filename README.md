@@ -26,7 +26,15 @@ pip install -e .            # or: export PYTHONPATH=$PWD:$PYTHONPATH
 ```
 
 Python 3.9+ with NumPy, SciPy, Matplotlib, Astropy and pandas
-(`requirements.txt`).
+(`requirements.txt`). The figures and tables of the paper were produced with
+Python 3.12.3 and the exact versions of `requirements-lock.txt`; in that
+environment `scripts/step3_bc_fig2_physical.py` reproduces
+`figs/fig2_physical_models.png` byte for byte, and other versions give the same
+values with pixel-level differences in the rendering:
+
+```bash
+pip install -r requirements-lock.txt
+```
 
 ---
 
@@ -90,9 +98,11 @@ with `sigma_eff^2 = sigma_Phi^2 + (K_z sigma_z)^2`, where `K_z` is the vertical
 force of each model. Systematic errors are added in quadrature: the Wang et al.
 rotation-curve budget (5–20 per cent, depending on R) to every radial point
 outside the Wang curve, whose errors already include it, and 5 per cent of
-`Phi` to the vertical points. The local stellar densities have Gaussian priors,
-`rho_thin(R0) ~ N(0.045, 0.003)` and `rho_thick(R0) ~ N(0.00525, 0.0006)`
-Msun pc^-3. `BIC = -2 ln L_max + k ln N`.
+`Phi` to the vertical points. The last two terms are the measured local stellar
+densities, `0.045 +- 0.003` and `0.00525 +- 0.0006` Msun pc^-3, which enter as
+two further data points (referred to as priors). `BIC = -2 ln L_max + k ln N`,
+where, when the disc densities are fitted, k includes them and N includes the two
+local densities (N = 198 for the full vector).
 
 Five radial data vectors (`vgrav.observations.radial_variant_arrays`):
 

@@ -5,14 +5,16 @@ radial data-vector variant, each gravity model is fitted by minimising
 
     -2 ln L = sum_rad (dv/sigma_v)^2 + ln(2 pi sigma_v^2)
             + sum_vert (dPhi/sigma_eff)^2 + ln(2 pi sigma_eff^2)
-            + prior(rho_thin) + prior(rho_thick),
+            + ((rho_thin - 0.045)/0.003)^2 + ((rho_thick - 0.00525)/0.0006)^2,
 
 with sigma_eff^2 = sigma_Phi^2 + (K_z sigma_z)^2, a radius-dependent systematic
 error (5-20 per cent, from the Wang et al. budget) on the radial points outside
-the Wang curve, 5 per cent of Phi on the vertical points, and Gaussian priors
-rho_thin(R0) ~ N(0.045, 0.003) and rho_thick(R0) ~ N(0.00525, 0.0006) Msun/pc^3
-on the local stellar densities. The thin- and thick-disc scale factors are free
-for every model. BIC = -2 ln L_max + k ln N, with k including the two disc factors.
+the Wang curve, and 5 per cent of Phi on the vertical points. The last two terms
+are the measured local stellar densities (Msun/pc^3) adopted by Wang et al.,
+which enter as two further data points. The thin- and thick-disc scale factors
+are free for every model. BIC = -2 ln L_max + k ln N, with k including the two
+disc factors and N the kinematic points of the radial variant plus the two
+local densities.
 
 Usage
 -----
@@ -227,12 +229,17 @@ def predict_algebraic(model, config, theta, zt, zk):
 
 # ── Fits ──────────────────────────────────────────────────────────────────────
 
+N_LOCAL_DENSITIES = 2   # the two local stellar densities enter -2 ln L as measurements
+
+
 def row(variant, config, model, k, best_m2lnl, best_chi2, zt, zk, theta, c_sun):
+    """N counts the kinematic points (chi2_nu uses it); the BIC also counts the two
+    local-density measurements, whose terms are part of -2 ln L."""
     n = len(STATE["radial"][variant][0]) + len(STATE["vert"]["rv"])
     rt, rk = local_densities(zt, zk, c_sun)
     return dict(variant=variant, config=config, model=model, k=k, N=n,
                 m2lnL=f"{best_m2lnl:.4f}", chi2=f"{best_chi2:.4f}", chi2_nu=f"{best_chi2 / (n - k):.4f}",
-                BIC=f"{best_m2lnl + k * math.log(n):.4f}", zt=f"{zt:.4f}", zk=f"{zk:.4f}",
+                BIC=f"{best_m2lnl + k * math.log(n + N_LOCAL_DENSITIES):.4f}", zt=f"{zt:.4f}", zk=f"{zk:.4f}",
                 rho_thin=f"{rt:.5f}", rho_thick=f"{rk:.6f}", theta=json.dumps([round(float(t), 5) for t in theta]))
 
 

@@ -1,0 +1,18 @@
+# Exact environment in which the figures and tables of the paper were produced
+# (Python 3.12.3). With it, scripts/step3_bc_fig2_physical.py reproduces
+# figs/fig2_physical_models.png byte for byte; other versions give the same
+# values with pixel-level differences in the rendering.
+numpy==2.5.2
+scipy==1.18.0
+matplotlib==3.11.1
+astropy==8.0.1
+pandas==3.1.1
+pillow==12.3.0
+contourpy==1.3.3
+cycler==0.12.1
+fonttools==4.63.0
+kiwisolver==1.5.0
+pyparsing==3.3.2
+python-dateutil==2.9.0.post0
+pyerfa==2.0.1.5
+packaging==26.3
