@@ -64,7 +64,7 @@ from vgrav.models import (
 )
 from vgrav.figures import plot_fig2, print_table2
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __all__ = [
     # observations
     "load_rotation_curve", "load_vertical_potential", "load_observations",

@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "vgrav: Radial--vertical gravity decoupling in the Milky Way"
-version: 1.0.0
+version: 2.0.0
 authors:
   - family-names: Monjo
     given-names: Robert

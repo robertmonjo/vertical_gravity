@@ -5,6 +5,8 @@ Reproducibility package for
 > **Radial–vertical gravity decoupling in the Milky Way: modified gravity and dark matter tests using Gaia DR3**
 > R. Monjo and A. E. Sasi (2026, in preparation)
 
+Archived on Zenodo: https://doi.org/10.5281/zenodo.21048437 (all versions; the paper uses v2.0.0).
+
 The package compares cold dark matter haloes and modified-gravity theories on a
 common Milky Way data vector: 152 model-independent rotation-curve points and
 the 44 vertical-potential measurements of Wang et al. (2026) from the Gaia DR3
