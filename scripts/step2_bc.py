@@ -7,11 +7,9 @@ as documented in step1_build_baryonic_mc100.py lines 138-140).
 
 Motivation
 ----------
-In the original step2_fit_all_models.py, HMG uses the smooth band target
-v_N (on r_line) for the radial term, while CDM, VEG, f(R), ReG, STVG use
-the Poisson vc_n (on r_grid) for the radial term.  These are two different
-estimates of the same physical quantity v_N(R), leading to an inconsistent
-chi2 comparison.
+The smooth band target v_N (on r_line) and the Poisson vc_n (on r_grid) are
+two different estimates of the same physical quantity v_N(R); using one for
+some models and the other for the rest would make the comparison inconsistent.
 
 Here, modified-gravity models (HMG, MOND variants, VEG, f(R), ReG) use the
 band draw j interpolated to r_grid as v_N[j](R) for the radial term.  HMG
@@ -24,9 +22,8 @@ Newtonian field: vc_total² = vc_baryon² + vc_halo².  Here, the 3D Poisson
 solution IS the baryonic mass distribution; the band is a smooth 1D
 observational estimate that is not the natural input for CDM.
 
-STVG retains the Poisson rho_disc for its Yukawa correction integral (the
-disc density is required for the 3D volume integral; a 1D velocity curve
-is insufficient).
+STVG, refracted gravity and VEG are fitted by likelihood_bic_mc100_extra.py
+(run with --no-stvg here), which solves their field equations on the grid.
 
 The Poisson phi_N[j] is used for the vertical potential by all models — it
 is the best available 3D estimate of phi(R,z) and is already calibrated to

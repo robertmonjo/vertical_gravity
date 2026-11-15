@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Fig. 2 from the full-likelihood band-consistent fits with the physical models.
 
-Same representation as step3_bc_fig2.py, but every curve comes from
-outputs/likelihood_bic_mc100/<variant>/bc_nbar4/ (four-source ensemble) and the
-s-HMG+Imig overlay from .../bc_nbar1/, so that the models are those of Table 5:
+Every curve comes from outputs/likelihood_bic_mc100/<variant>/bc_nbar4/
+(four-source ensemble) and the s-HMG+Imig overlay from .../bc_nbar1/, so that the
+models are those of Table 3; the shaded baryonic band is the 16th-84th percentile
+interval of the 100 realisations in outputs/nbar4/:
 
   QUMOND (Simple, Standard, MLS)  solved with its Poisson equation
   VEG                             apparent dark matter of Verlinde (2016), free a0
@@ -14,7 +15,7 @@ s-HMG+Imig overlay from .../bc_nbar1/, so that the models are those of Table 5:
 
 The legend gives, for each model, Delta BIC with the BIC marginalised over the
 100 draws of the ensemble, -2 ln[(1/N) sum_i exp(-BIC_i/2)], so that the
-baryonic uncertainty is included (Table 5, marginalised columns). The
+baryonic uncertainty is included (Table 3, marginalised columns). The
 s-HMG+Imig overlay comes from the MI ensemble and carries no value, since its
 Delta BIC refers to another set of draws.
 
@@ -40,8 +41,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from vgrav.figures import plot_fig2
-sys.path.insert(0, str(ROOT / "scripts"))
-from step3_bc_fig2 import _ensure_baryon_band  # noqa: E402
 
 # figure key -> suffix of model_bc_<suffix>_{radial,vertical}.csv in the likelihood run
 KEY_MAP: dict[str, str] = {
@@ -80,6 +79,33 @@ def stage(src: Path, nbar_dir: Path, dest: Path) -> None:
         shutil.copy2(nbar_dir / name, dest / name)
 
 
+def stage_baryon_band(nbar_dir: Path, data_dir: Path) -> None:
+    """Band files read by plot_fig2 from data_dir.
+
+    baryonic_target_band.csv: percentiles of the 100 baryonic realisations of the
+    ensemble (the shaded band of the upper panel). baryon_band.csv: the curve of
+    each baryonic reconstruction (dotted lines), including Barros et al. (2016).
+    """
+    data_dir.mkdir(parents=True, exist_ok=True)
+    with open(nbar_dir / "mc100_baryonic_radial.csv", newline="", encoding="utf-8") as fh:
+        rows = [r for r in csv.reader(fh)][1:]
+    rows = [r for r in rows if not r[0].startswith("chi2")]
+    radius = np.array([float(r[0]) for r in rows])
+    draws = np.array([[float(x) for x in r[1:]] for r in rows])
+    levels = (5, 16, 50, 84, 95)
+    pct = np.percentile(draws, levels, axis=1)
+    curves = ROOT / "data" / f"baryon_band_{nbar_dir.name}.csv"
+    shutil.copy2(curves, data_dir / "baryon_band.csv")
+    # plot_fig2 draws the reconstruction curves on the radii of the band
+    with open(curves, newline="", encoding="utf-8") as fh:
+        grid = np.array([float(r["R_kpc"]) for r in csv.DictReader(fh)])
+    with open(data_dir / "baryonic_target_band.csv", "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["R_kpc"] + [f"Baryonic_target_p{p}" for p in levels])
+        for r in grid:
+            w.writerow([f"{r:.9g}"] + [f"{np.interp(r, radius, pct[j]):.9g}" for j in range(len(levels))])
+
+
 def marginal_delta_bic(directory: Path) -> dict[str, float]:
     """Delta BIC with each BIC marginalised over the draws: -2 ln[(1/N) sum_i exp(-BIC_i/2)]."""
     with open(directory / "bic_per_draw.csv", newline="", encoding="utf-8") as fh:
@@ -108,9 +134,7 @@ def main() -> None:
     stage(run / "bc_nbar4", ROOT / "outputs" / "nbar4", dest4)
     stage(run / "bc_nbar1", ROOT / "outputs" / "nbar1", dest1)
 
-    # baryonic band staged exactly as in step3_bc_fig2.py (same calls, same order)
-    _ensure_baryon_band(dest4)
-    _ensure_baryon_band(dest1)
+    stage_baryon_band(ROOT / "outputs" / "nbar4", dest4.parent / "data")
 
     # the s-HMG+Imig overlay belongs to another ensemble: no value in the legend
     values = marginal_delta_bic(run / "bc_nbar4")

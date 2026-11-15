@@ -2,39 +2,15 @@
 
 Package structure
 -----------------
-observations   Load Wang+2026 rotation curve and vertical potential data.
-solver         Cylindrical axisymmetric Poisson solver (for QUMOND / STVG).
-baryonic       Parametric density model + MC100 qcopula generation.
-models         Gravity model equations for 12 models (CDM, MOND, STVG, HMG,
-               f(R), Refracted Gravity, Emergent Gravity).
-chi2           Chi-squared and reduced chi-squared computation.
-figures        Standalone Figure 2 renderer and Table 2 printer.
+observations   Rotation-curve and vertical-potential data, radial data vectors.
+solver         Axisymmetric Poisson, Helmholtz and permittivity solver.
+baryonic       Baryonic densities, weighted bands and Monte Carlo realisations.
+models         Gravity models (CDM, QUMOND, VEG, STVG, f(R), refracted gravity, HMG).
+chi2           Likelihood terms.
+figures        Figs. 1 and 2.
 
-Quick start — fast verification mode
--------------------------------------
-Requires pre-computed CSVs in the outputs/ directory (included in this release).
-
-    from pathlib import Path
-    from vgrav.figures import print_table2, plot_fig2
-
-    out = Path("outputs")
-    print_table2(out)                       # reproduces Table 2
-    fig = plot_fig2(out, dpi=220)           # reproduces Fig. 2
-    fig.savefig("fig2_reproduced.png", dpi=220, bbox_inches="tight")
-
-Full pipeline (from scratch)
------------------------------
-See scripts/step1_build_baryonic_mc100.py  through  step4_analyze_hmg.py.
-
-    python scripts/step1_build_baryonic_mc100.py   # build 100 baryonic draws
-    python scripts/step2_fit_all_models.py          # fit 11 models (STVG separate)
-    python scripts/step3_reproduce_fig2_table2.py   # chi^2 summary + figure
-    python scripts/step4_analyze_hmg.py             # HMG competitive analysis
-
-Reference
----------
-Wang et al. (2026), vertical gravitational potential of the Milky Way.
-This package version: 1.0.0.
+The scripts that reproduce the tables and figures of the paper are listed in
+README.md.
 """
 
 from vgrav.observations import (

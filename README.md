@@ -74,7 +74,7 @@ and `tables/likelihood_bic_tables.tex`. It requires the baryonic realisations in
 ### 3. Baryonic ensembles from scratch
 
 ```bash
-python scripts/run_all_nbar.py --full               # see the script for parallel modes
+bash scripts/build_baryonic_ensembles.sh
 ```
 
 builds, for each ensemble n = 1–4, the weighted baryonic band
@@ -83,8 +83,8 @@ its 100 realisations (`outputs/nbar<n>/mc100_baryonic_{radial,vertical}.csv`,
 `scripts/step1_build_baryonic_mc100.py`). Ensemble n combines the first n
 reconstructions: MI, MI+LW, MI+LW+B2, MI+LW+B2+MM. The weights are
 w_i(R) ∝ 1/chi2_local,i(R) between each reconstruction and the radial data,
-with a Gaussian kernel of width 0.5 in ln R. The script also refits the models
-with the chi2 statistic of Sect. "Statistical errors only" below.
+with a Gaussian kernel of width 0.5 in ln R. Step 2 then refits the models on
+the new realisations.
 
 ---
 
@@ -174,19 +174,6 @@ CSV files are kept for comparison: `stvg` (alpha and mu free), `fr_screened`
 
 ---
 
-## Statistical errors only
-
-The chi2 statistic with statistical errors only, fixed discs and median chi2_nu
-over the realisations is kept for comparison:
-
-```bash
-python scripts/bc_leads_table.py          # chi2_nu percentiles and leads per ensemble (outputs/bc_nbar*)
-python scripts/step3_bc_fig2.py           # figure with these fits -> figs/fig2_reproduced_4fam.png
-python scripts/step3_reproduce_fig2_table2.py
-```
-
----
-
 ## Package contents
 
 ```
@@ -195,16 +182,15 @@ vertical_gravity/
 ├── data/                     observational data, baryonic bands, Fig. 1 inputs
 │   ├── fig2_observational_catalog.csv   radial catalogue (model-independent points used in the fits)
 │   ├── wang2026_vertical_potential.csv  44 vertical-potential points
-│   ├── baryon_band_nbar{1..4}.csv       weighted baryonic band of each ensemble
+│   ├── baryon_band_nbar{1..4}.csv       curve of each baryonic reconstruction (and Barros et al. 2016)
 │   └── fig1_density_grid.npz, fig1_spiral_arms.csv
 ├── outputs/
 │   ├── nbar{1..4}/                      baryonic realisations of each ensemble
 │   ├── likelihood_bic/                  framework 1: likelihood_bic_fits.csv, summary.txt
-│   ├── likelihood_bic_mc100/            framework 2: per variant and ensemble, bic_per_draw.csv,
-│   │                                    likelihood_setup.json; all/bc_nbar{1,4}/ model CSVs for Fig. 2;
-│   │                                    summary_<variant>.txt, marginal_all.txt
-│   └── bc_nbar{1..4}/                   fits with statistical errors only
-├── tables/likelihood_bic_tables.tex     rows of the BIC tables of the paper
+│   └── likelihood_bic_mc100/            framework 2: per variant and ensemble, bic_per_draw.csv,
+│                                        likelihood_setup.json; all/bc_nbar{1,4}/ model CSVs for Fig. 2;
+│                                        summary_<variant>.txt, marginal_all.txt
+├── tables/                              rows of the BIC tables of the paper
 ├── figs/                                figures
 ├── vgrav/                               library
 │   ├── observations.py   data vectors and radial variants
@@ -224,11 +210,10 @@ vertical_gravity/
     ├── likelihood_bic_tables.py        rows of the BIC tables
     ├── step3_bc_fig2_physical.py       Fig. 2
     ├── step0_reproduce_fig1.py         Fig. 1
-    ├── run_all_nbar.py, rebuild_baryon_band.py, step1_build_baryonic_mc100.py
-    │                                   baryonic ensembles
-    └── bc_leads_table.py, step3_bc_fig2.py, step3_reproduce_fig2_table2.py,
-        step2_fit_all_models.py, step4_analyze_hmg.py
-                                        statistic with statistical errors only
+    ├── build_baryonic_ensembles.sh     baryonic ensembles from scratch
+    ├── rebuild_baryon_band.py          weighted baryonic band of an ensemble
+    ├── step1_build_baryonic_mc100.py   its 100 realisations
+    └── step1_table2_wang78_joint_disc.py  disc model shared by framework 1
 ```
 
 ---
