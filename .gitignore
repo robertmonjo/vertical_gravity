@@ -5,3 +5,4 @@ figs/fig2_bc_nbar4.png
 figs/fig2_internal_nbar1.png
 __pycache__/
 outputs/fig2_physical/
+outputs/nbar*/build.log
